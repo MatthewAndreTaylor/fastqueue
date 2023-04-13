@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mqueue"
+version = "1.0.0"
+description="Fast single ended queue library for python"
+authors = [
+    {name = "Matthew Taylor", email = "matthew.taylor.andre@gmail.com"},
+]
+urls = {Homepage = "https://github.com/MatthewAndreTaylor/mqueue"}
+requires-python = ">=3.7"
+keywords = ["Queue"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"

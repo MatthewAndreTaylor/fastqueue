@@ -1,0 +1,11 @@
+build
+dist
+.idea
+.vscode
+.pytest_cache
+__pycache__
+*.so
+*.egg-info
+*.whl
+.venv
+*.png
