@@ -7,7 +7,7 @@ Single ended fast queue's built in C for python.
 
 ## Requirements
 
-- Python 3.7+
+- `python 3.7+`
 
 ## Installation
 
@@ -20,8 +20,8 @@ pip install mqueue
 ## Quickstart
 
 ```py
->>> import mQueue
->>> queue = mQueue.Queue()
+>>> from mqueue.mqueue import *
+>>> queue = Queue()
 >>> queue.extend(['🚒', '🛴'])
 >>> queue.enqueue('🚅')
 >>> queue.enqueue('🚗')

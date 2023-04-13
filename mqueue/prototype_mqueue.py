@@ -54,7 +54,7 @@ class LLQueue:
     def __len__(self) -> int:
         return self.queue.contents.length
 
-    def enqueue(self, item: Any):
+    def enqueue(self, item: Any) -> None:
         llqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:
@@ -98,7 +98,7 @@ cqueue_lib.free_q.argtypes = [POINTER(ContiguousQueue)]
 cqueue_lib.free_q.restype = None
 
 
-class CQueue:
+class ContQueue:
     __slots__ = "queue"
     queue: POINTER(ContiguousQueue)
 
@@ -111,7 +111,7 @@ class CQueue:
     def __len__(self) -> int:
         return self.queue.contents.length
 
-    def enqueue(self, item: Any):
+    def enqueue(self, item: Any) -> None:
         cqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:

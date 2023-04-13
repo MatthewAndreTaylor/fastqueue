@@ -21,24 +21,20 @@ class build_ext(build_ext_orig):
 ctype_ext = [
     Extension(
         "mqueue.cllqueue",
-        ["mqueue/cllqueue.cpp"],
+        ["src/cllqueue.cpp"],
     ),
     Extension(
         "mqueue.ccqueue",
-        ["mqueue/ccqueue.cpp"],
+        ["src/ccqueue.cpp"],
     )
 ]
 
 setup(
-    py_modules=["mqueue.prototype_queue"],
+    packages=["mqueue"],
     ext_modules=ctype_ext + [
         Extension(
-            "mqueue.mQueue",
-            ["mqueue/mQueue.c"],
-        ),
-        Extension(
-            "mqueue.mQueueContiguous",
-            ["mqueue/mQueueContiguous.c"],
+            "mqueue.mqueue",
+            ["src/mqueue.c"],
         )
     ],
     cmdclass={"build_ext": build_ext}

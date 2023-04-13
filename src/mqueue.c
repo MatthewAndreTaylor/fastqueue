@@ -1,5 +1,197 @@
 #include <Python.h>
 
+/**
+ * Single ended Contiguous Python Queue
+ * --- mqueue.QueueC ---
+ */
+typedef struct {
+    PyObject_VAR_HEAD
+    PyObject** objects;
+    int length;
+    int capacity;
+    int front;
+    int back;
+} QueueC;
+
+static PyObject* QueueC_is_empty(QueueC* self, PyObject* args) {
+    if (self->length == 0)
+        Py_RETURN_TRUE;
+    else
+        Py_RETURN_FALSE;
+}
+
+static PyObject* QueueC_new(PyTypeObject* type, PyObject* args, PyObject* kwargs) {
+    QueueC* self = (QueueC*)type->tp_alloc(type, 0);
+    if (self == NULL)
+        return PyErr_NoMemory();
+
+    self->objects = (PyObject**) malloc(1024 * sizeof(PyObject*));
+    if (self->objects == NULL) {
+        Py_DECREF(self);
+        return PyErr_NoMemory();
+    }
+
+    self->length = 0;
+    self->capacity = 1024;
+    self->front = 0;
+    self->back = self->capacity - 1;
+    return (PyObject*)self;
+}
+
+static void QueueC_dealloc(QueueC* self) {
+    if (self == NULL)
+        return;
+    PyObject_GC_UnTrack(self);
+    free(self->objects);
+    self->objects = NULL;
+    Py_TYPE(self)->tp_free(self);
+}
+
+static int QueueC_clear(QueueC* self) {
+    if (self->length == 0)
+        return 0;
+
+    for (int i = 0; i < self->length; ++i) {
+        int index = (self->front + i) % self->capacity;
+        if (self->objects[index] != NULL && !PyObject_IS_GC(self->objects[index])) {
+            Py_DECREF(self->objects[index]);
+            self->objects[index] = NULL;
+        }
+    }
+    self->length = 0;
+    self->front = 0;
+    self->back = self->capacity - 1;
+    return 0;
+}
+
+static int QueueC_traverse(QueueC* self, visitproc visit, void* arg) {
+    for (int i = 0; i < self->length; ++i) {
+        int index = (self->front + i) % self->capacity;
+        Py_VISIT(self->objects[index]);
+    }
+    return 0;
+}
+
+static void QueueC_resize(QueueC* self, int newCapacity) {
+    PyObject** newObjects = (PyObject**) malloc(newCapacity * sizeof(PyObject*));
+    if (newObjects == NULL) {
+        PyErr_NoMemory();
+        return;
+    }
+    for (int i = 0; i < self->length; ++i) {
+        newObjects[i] = self->objects[(self->front + i) % self->capacity];
+    }
+
+    free(self->objects);
+    self->objects = newObjects;
+    self->front = 0;
+    self->back = self->length - 1;
+    self->capacity = newCapacity;
+}
+
+static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
+    if (object == Py_None)
+        Py_RETURN_NONE;
+    if (self->length == self->capacity)
+        QueueC_resize(self, self->capacity * 2);
+
+    Py_INCREF(object);
+    self->front = (self->front + self->capacity - 1) % self->capacity;
+    self->objects[self->front] = object;
+    self->length++;
+    Py_RETURN_NONE;
+}
+
+static PyObject* QueueC_dequeue(QueueC* self, PyObject* args) {
+    if (self->length == 0) {
+        PyErr_SetString(PyExc_IndexError, "dequeue from an empty Queue");
+        return NULL;
+    }
+
+    PyObject* object = self->objects[self->back];
+    self->back = (self->back + self->capacity - 1) % self->capacity;
+    self->length--;
+    return object;
+}
+
+static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
+    PyObject* iterable = PyObject_GetIter(iterator);
+    if (iterable == NULL)
+        return NULL;
+
+    PyObject* py_object;
+    PyObject* (*next)(PyObject*);
+    next = *Py_TYPE(iterable)->tp_iternext;
+    while ((py_object = next(iterable)) != NULL) {
+        QueueC_enqueue(self, py_object);
+    }
+    Py_DECREF(iterable);
+    Py_RETURN_NONE;
+}
+
+static Py_ssize_t QueueC_len(QueueC* self) {
+    return (Py_ssize_t)self->length;
+}
+
+static PySequenceMethods QueueC_sequence_methods = {
+    (lenfunc)QueueC_len,                  /* sq_length */
+};
+
+static PyMethodDef QueueC_methods[] = {
+    {"enqueue", (PyCFunction)QueueC_enqueue, METH_O, "Add an object to the front of the QueueC."},
+    {"dequeue", (PyCFunction)QueueC_dequeue, METH_NOARGS, "Remove and return an object from the back of the QueueC."},
+    {"is_empty", (PyCFunction)QueueC_is_empty, METH_NOARGS, "Check if the QueueC is empty."},
+    {"extend", (PyCFunction)QueueC_extend, METH_O, "Add an objects from an iterator front of the QueueC."},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyTypeObject QueueCType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "QueueC",                                   /* tp_name */
+    sizeof(QueueC),                             /* tp_basicsize */
+    0,                                          /* tp_itemsize */
+    (destructor)QueueC_dealloc,                 /* tp_dealloc */
+    0,                                          /* tp_print */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    0,                                          /* tp_reserved */
+    0,                                          /* tp_repr */
+    0,                                          /* tp_as_number */
+    &QueueC_sequence_methods,                   /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    PyObject_HashNotImplemented,                /* tp_hash */
+    0,                                          /* tp_call */
+    0,                                          /* tp_str */
+    0,                                          /* tp_getattro */
+    0,                                          /* tp_setattro */
+    0,                                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,    /* tp_flags */
+    "Python Queue Extension",                   /* tp_doc */
+    (traverseproc)QueueC_traverse,              /* tp_traverse */
+    (inquiry)QueueC_clear,                      /* tp_clear */
+    0,                                          /* tp_richcompare */
+    0,                                          /* tp_weaklistoffset */
+    0,                                          /* tp_iter */
+    0,                                          /* tp_iternext */
+    QueueC_methods,                             /* tp_methods */
+    0,                                          /* tp_members */
+    0,                                          /* tp_getset */
+    0,                                          /* tp_base */
+    0,                                          /* tp_dict */
+    0,                                          /* tp_descr_get */
+    0,                                          /* tp_descr_set */
+    0,                                          /* tp_dictoffset */
+    0,                                          /* tp_init */
+    PyType_GenericAlloc,                        /* tp_alloc */
+    QueueC_new,                                 /* tp_new */
+    PyObject_GC_Del,                            /* tp_free */
+};
+
+
+/**
+ * Single ended Python Queue with subqueue chunks
+ * --- mqueue.QueueC ---
+ */
 typedef struct QueueNode {
     PyObject* py_objects[256];
     int numEntries; // Number of entries into this node
@@ -149,7 +341,7 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
     PyObject* iterable = PyObject_GetIter(iterator);
     if (iterable == NULL)
         return NULL;
-    
+
     PyObject* py_object;
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
@@ -160,7 +352,7 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
     Py_RETURN_NONE;
 }
 
-static Py_ssize_t Queue_len(Queue_t* self) {   
+static Py_ssize_t Queue_len(Queue_t* self) {
     return (Py_ssize_t)self->length;
 }
 
@@ -221,20 +413,21 @@ static PyTypeObject QueueType = {
 
 static PyModuleDef QueueModuleDef = {
     PyModuleDef_HEAD_INIT,
-    "mQueue",
-    "Singly linked, small overhead imlementation of the Queue data structure.",
+    "mqueue",
+    "Singly linked, small overhead implementations of the Queue data structure.",
     -1,
     NULL, NULL, NULL, NULL, NULL
 };
 
-PyMODINIT_FUNC PyInit_mQueue(void) {
+PyMODINIT_FUNC PyInit_mqueue(void) {
     PyObject* module;
-    if (PyType_Ready(&QueueType) < 0)
+    if (PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0)
         return NULL;
 
     module = PyModule_Create(&QueueModuleDef);
     if (module == NULL)
         return NULL;
+    PyModule_AddType(module, &QueueCType);
     PyModule_AddType(module, &QueueType);
     return module;
 }

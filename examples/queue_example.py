@@ -1,18 +1,19 @@
-import sys, time
-import matplotlib.pyplot as plt
 import queue
-from mqueue.prototype_queue import LLQueue, CQueue
-import mQueue
-import mQueueContiguous
+import sys
+import time
+import matplotlib.pyplot as plt
+
+from mqueue.prototype_mqueue import *
+from mqueue.mqueue import *
 
 queue_size = 1000000
 queue_structures = {
     "Python queue": (queue.Queue(), queue.Queue.put, queue.Queue.get),
     "Python Simple queue": (queue.SimpleQueue(), queue.SimpleQueue.put, queue.SimpleQueue.get),
     "Matt's Linked List queue": (LLQueue(), LLQueue.enqueue, LLQueue.dequeue),
-    "Matt's Contiguous queue": (CQueue(), CQueue.enqueue, CQueue.dequeue),
-    "Matt's C queue": (mQueue.Queue(), mQueue.Queue.enqueue, mQueue.Queue.dequeue),
-    "Matt's C Contiguous queue": (mQueueContiguous.Queue(), mQueueContiguous.Queue.enqueue, mQueueContiguous.Queue.dequeue),
+    "Matt's Contiguous queue": (ContQueue(), ContQueue.enqueue, ContQueue.dequeue),
+    "Matt's C queue": (Queue(), Queue.enqueue, Queue.dequeue),
+    "Matt's C Contiguous queue": (QueueC(), QueueC.enqueue, QueueC.dequeue),
 }
 queue_types = queue_structures.keys()
 queue_times = []

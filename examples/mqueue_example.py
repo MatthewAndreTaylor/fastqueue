@@ -1,8 +1,8 @@
-import sys, time
-import matplotlib.pyplot as plt
 import collections
-import mQueue
-import mQueueContiguous
+import sys
+import time
+import matplotlib.pyplot as plt
+from mqueue.mqueue import *
 
 fig, ax = plt.subplots()
 queue_sizes = [100, 1000, 10000, 100000, 1000000, 4000000]
@@ -13,11 +13,11 @@ queue_structures = {
         collections.deque.pop,
         collections.deque.extendleft),
     "Matt's C queue": (
-        mQueue.Queue(), mQueue.Queue.enqueue, mQueue.Queue.dequeue,
-        mQueue.Queue.extend),
+        Queue(), Queue.enqueue, Queue.dequeue,
+        Queue.extend),
     "Matt's C Contiguous queue": (
-        mQueueContiguous.Queue(), mQueueContiguous.Queue.enqueue,
-        mQueueContiguous.Queue.dequeue, mQueueContiguous.Queue.extend),
+        QueueC(), QueueC.enqueue,
+        QueueC.dequeue, QueueC.extend),
 }
 queue_types = queue_structures.keys()
 
