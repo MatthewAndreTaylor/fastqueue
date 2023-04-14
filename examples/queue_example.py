@@ -34,5 +34,5 @@ for i, v in enumerate(queue_times):
 plt.xlabel("Queue Type")
 plt.ylabel("Time")
 plt.title(f"Queue Analysis : {sys.platform}")
-plt.savefig("examples/Queue_types.png")
+plt.savefig(f"Queue_types_{sys.platform}.png")
 print("Queue times Graphed")

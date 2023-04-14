@@ -33,8 +33,8 @@ static PyObject* QueueC_new(PyTypeObject* type, PyObject* args, PyObject* kwargs
 
     self->length = 0;
     self->capacity = 1024;
-    self->front = 0;
-    self->back = self->capacity - 1;
+    self->front = 1023;
+    self->back = 0;
     return (PyObject*)self;
 }
 
@@ -52,21 +52,21 @@ static int QueueC_clear(QueueC* self) {
         return 0;
 
     for (int i = 0; i < self->length; ++i) {
-        int index = (self->front + i) % self->capacity;
+        int index = (self->back + i) % self->capacity;
         if (self->objects[index] != NULL && !PyObject_IS_GC(self->objects[index])) {
             Py_DECREF(self->objects[index]);
             self->objects[index] = NULL;
         }
     }
     self->length = 0;
-    self->front = 0;
-    self->back = self->capacity - 1;
+    self->front = self->capacity - 1;
+    self->back = 0;
     return 0;
 }
 
 static int QueueC_traverse(QueueC* self, visitproc visit, void* arg) {
     for (int i = 0; i < self->length; ++i) {
-        int index = (self->front + i) % self->capacity;
+        int index = (self->back + i) % self->capacity;
         Py_VISIT(self->objects[index]);
     }
     return 0;
@@ -79,13 +79,11 @@ static void QueueC_resize(QueueC* self, int newCapacity) {
         return;
     }
     for (int i = 0; i < self->length; ++i) {
-        newObjects[i] = self->objects[(self->front + i) % self->capacity];
+        newObjects[i] = self->objects[(self->back + i) % self->capacity];
     }
 
     free(self->objects);
     self->objects = newObjects;
-    self->front = 0;
-    self->back = self->length - 1;
     self->capacity = newCapacity;
 }
 
@@ -96,20 +94,20 @@ static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
         QueueC_resize(self, self->capacity * 2);
 
     Py_INCREF(object);
-    self->front = (self->front + self->capacity - 1) % self->capacity;
+    self->front = (self->front + 1) % self->capacity;
     self->objects[self->front] = object;
     self->length++;
     Py_RETURN_NONE;
 }
 
-static PyObject* QueueC_dequeue(QueueC* self, PyObject* args) {
+static PyObject* QueueC_dequeue(QueueC* self) {
     if (self->length == 0) {
         PyErr_SetString(PyExc_IndexError, "dequeue from an empty Queue");
         return NULL;
     }
 
     PyObject* object = self->objects[self->back];
-    self->back = (self->back + self->capacity - 1) % self->capacity;
+    self->back = (self->back + 1) % self->capacity;
     self->length--;
     return object;
 }
@@ -134,16 +132,42 @@ static Py_ssize_t QueueC_len(QueueC* self) {
 }
 
 static PyObject* QueueC_item(QueueC* self, Py_ssize_t index) {
-    if (index < 0 || index >= self->length) {
+    if (index < 0)
+        index = index + QueueC_len(self);
+    if (index >= self->length) {
         PyErr_SetString(PyExc_IndexError, "queue index out of range");
         return NULL;
     }
-    return self->objects[(self->front + self->length - index - 1) % self->capacity];
+    PyObject* object = self->objects[(self->back + index) % self->capacity];
+    Py_INCREF(object);
+    return object;
+}
+
+static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
+    if (index < 0)
+        index = QueueC_len(self) + index;
+
+    if (index >= self->length) {
+        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        return -1;
+    }
+    
+    PyObject* oldObject = self->objects[(self->back + index) % self->capacity];
+    Py_DECREF(oldObject);
+    if (object == NULL) {
+        self->objects[(self->back + index) % self->capacity] = Py_None; 
+    } 
+    else {
+        Py_INCREF(object);
+        self->objects[(self->back + index) % self->capacity] = object; 
+    }
+    return 0;
 }
 
 static int QueueC_contains(QueueC* self, PyObject* object) {
     for (int i = 0; i < self->length; ++i) {
-        if (PyObject_RichCompareBool(object, self->objects[(self->front + i) % self->capacity], Py_EQ))
+        int index = (self->back + i) % self->capacity;
+        if (self->objects[index] != NULL && PyObject_RichCompareBool(object, self->objects[index], Py_EQ))
             return 1;
     }
     return 0;
@@ -155,9 +179,10 @@ static PySequenceMethods QueueC_sequence_methods = {
     NULL,                                 /* sq_repeat */
     (ssizeargfunc)QueueC_item,            /* sq_item */
     NULL,                                 /* sq_slice */
-    NULL,                                 /* sq_as_item */
+    (ssizeobjargproc)QueueC_setitem,      /* sq_as_item */
     NULL,                                 /* sq_as_slice */
-    (objobjproc)QueueC_contains           /* sq_contains */
+    (objobjproc)QueueC_contains,          /* sq_contains */
+    (binaryfunc)QueueC_extend             /* sq_inplace_concat */
 };
 
 static PyMethodDef QueueC_methods[] = {
@@ -168,6 +193,7 @@ static PyMethodDef QueueC_methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+PyDoc_STRVAR(queuec_doc, "QueueC() -> Contiguous Single ended Queue object.");
 static PyTypeObject QueueCType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "QueueC",                                   /* tp_name */
@@ -189,7 +215,7 @@ static PyTypeObject QueueCType = {
     0,                                          /* tp_setattro */
     0,                                          /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,    /* tp_flags */
-    "Python Queue Extension",                   /* tp_doc */
+    queuec_doc,                                 /* tp_doc */
     (traverseproc)QueueC_traverse,              /* tp_traverse */
     (inquiry)QueueC_clear,                      /* tp_clear */
     0,                                          /* tp_richcompare */
@@ -293,7 +319,7 @@ static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
 
 // Remove a py_object from the first QueueNode in the Queue
 PyDoc_STRVAR(dequeue_doc, "Remove and return an item from the end of the queue.");
-static PyObject* Queue_dequeue(Queue_t* self, PyObject* args) {
+static PyObject* Queue_dequeue(Queue_t* self) {
     if (self->length == 0) {
         PyErr_SetString(PyExc_IndexError, "dequeue from an empty Queue");
         return NULL;
@@ -383,16 +409,46 @@ static Py_ssize_t Queue_len(Queue_t* self) {
 }
 
 static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
-    if (index < 0 || index >= self->length) {
+    if (index < 0)
+        index = Queue_len(self) + index;
+
+    if (index >= self->length) {
         PyErr_SetString(PyExc_IndexError, "queue index out of range");
         return NULL;
     }
     
     QueueNode_t* current = self->head;
-    for (int  i = 0; i < (int)(index / 256); ++i) {
+    for (int i = 0; i < (int)(index / 256); ++i) {
         current = current->next;
     }
-    return current->py_objects[(current->back + index) & 255];
+    PyObject* object = current->py_objects[(current->back + index) & 255];
+    Py_INCREF(object);
+    return object;
+}
+
+static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
+    if (index < 0)
+        index = Queue_len(self) + index;
+
+    if (index >= self->length) {
+        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        return -1;
+    }
+    
+    QueueNode_t* current = self->head;
+    for (int i = 0; i < (int)(index / 256); ++i) {
+        current = current->next;
+    }
+    PyObject* oldObject = current->py_objects[(current->back + index) & 255];
+    Py_DECREF(oldObject);
+    if (object == NULL) {
+        current->py_objects[(current->back + index) & 255] = Py_None; 
+    } 
+    else {
+        Py_INCREF(object);
+        current->py_objects[(current->back + index) & 255] = object; 
+    }
+    return 0;
 }
 
 static int Queue_contains(Queue_t* self, PyObject* object) {
@@ -413,9 +469,10 @@ static PySequenceMethods Queue_sequence_methods = {
     NULL,                                 /* sq_repeat */
     (ssizeargfunc)Queue_item,             /* sq_item */
     NULL,                                 /* sq_slice */
-    NULL,                                 /* sq_as_item */
+    (ssizeobjargproc)Queue_setitem,       /* sq_as_item */
     NULL,                                 /* sq_as_slice */
-    (objobjproc)Queue_contains            /* sq_contains */
+    (objobjproc)Queue_contains,           /* sq_contains */
+    (binaryfunc)Queue_extend              /* sq_inplace_concat */
 };
 
 static PyMethodDef Queue_methods[] = {
@@ -426,7 +483,7 @@ static PyMethodDef Queue_methods[] = {
     {NULL, NULL, 0, NULL}
 };
 
-PyDoc_STRVAR(queue_doc,"Queue() -> Queue object\nQueue is optimized for a sequence of enqueue and dequeue operations at the head and tail.");
+PyDoc_STRVAR(queue_doc,"Queue() -> Single ended Queue object.");
 static PyTypeObject QueueType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "Queue",                                    /* tp_name */
