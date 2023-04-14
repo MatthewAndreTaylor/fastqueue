@@ -2,7 +2,6 @@ import queue
 import sys
 import time
 import matplotlib.pyplot as plt
-
 from mqueue.prototype_mqueue import *
 from mqueue.mqueue import *
 

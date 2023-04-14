@@ -58,6 +58,8 @@ class LLQueue:
         llqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:
+        if self.is_empty():
+            raise IndexError
         return llqueue_lib.dequeue(self.queue)
 
     def clear(self):
@@ -115,6 +117,8 @@ class ContQueue:
         cqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:
+        if self.is_empty():
+            raise IndexError
         return cqueue_lib.dequeue(self.queue)
 
     def clear(self):

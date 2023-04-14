@@ -133,8 +133,31 @@ static Py_ssize_t QueueC_len(QueueC* self) {
     return (Py_ssize_t)self->length;
 }
 
+static PyObject* QueueC_item(QueueC* self, Py_ssize_t index) {
+    if (index < 0 || index >= self->length) {
+        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        return NULL;
+    }
+    return self->objects[(self->front + self->length - index - 1) % self->capacity];
+}
+
+static int QueueC_contains(QueueC* self, PyObject* object) {
+    for (int i = 0; i < self->length; ++i) {
+        if (PyObject_RichCompareBool(object, self->objects[(self->front + i) % self->capacity], Py_EQ))
+            return 1;
+    }
+    return 0;
+}
+
 static PySequenceMethods QueueC_sequence_methods = {
     (lenfunc)QueueC_len,                  /* sq_length */
+    NULL,                                 /* sq_concat */
+    NULL,                                 /* sq_repeat */
+    (ssizeargfunc)QueueC_item,            /* sq_item */
+    NULL,                                 /* sq_slice */
+    NULL,                                 /* sq_as_item */
+    NULL,                                 /* sq_as_slice */
+    (objobjproc)QueueC_contains           /* sq_contains */
 };
 
 static PyMethodDef QueueC_methods[] = {
@@ -295,8 +318,11 @@ static PyObject* Queue_dequeue(Queue_t* self, PyObject* args) {
 
 // Deallocate the Queue
 static void Queue_dealloc(Queue_t* self) {
+    if (self == NULL)
+        return;
     PyObject_GC_UnTrack(self);
-    free(self->head);
+    if (self->head != NULL)
+        Queue_clear(self);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -308,7 +334,7 @@ static int Queue_clear(Queue_t *self) {
     QueueNode_t* next;
     while (current != NULL) {
         for (int i = 0; i < current->numEntries; ++i) {
-            int index = (current->front + i) & 255;
+            int index = (current->back + i) & 255;
             if (current->py_objects[index] != NULL && !PyObject_IS_GC(current->py_objects[index])) {
                 Py_DECREF(current->py_objects[index]);
                 current->py_objects[index] = NULL;
@@ -328,7 +354,7 @@ static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
         for (int i = 0; i < current->numEntries; ++i) {
-            int index = (current->front + i) & 255;
+            int index = (current->back + i) & 255;
             Py_VISIT(current->py_objects[index]);
         }
         current = current->next;
@@ -356,8 +382,40 @@ static Py_ssize_t Queue_len(Queue_t* self) {
     return (Py_ssize_t)self->length;
 }
 
+static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
+    if (index < 0 || index >= self->length) {
+        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        return NULL;
+    }
+    
+    QueueNode_t* current = self->head;
+    for (int  i = 0; i < (int)(index / 256); ++i) {
+        current = current->next;
+    }
+    return current->py_objects[(current->back + index) & 255];
+}
+
+static int Queue_contains(Queue_t* self, PyObject* object) {
+    QueueNode_t* current = self->head;
+    while (current != NULL) {
+        for (int i = 0; i < current->numEntries; ++i) {
+            if (PyObject_RichCompareBool(object, current->py_objects[(current->back + i) & 255], Py_EQ))
+                return 1;
+        }
+        current = current->next;
+    }
+    return 0;
+}
+
 static PySequenceMethods Queue_sequence_methods = {
     (lenfunc)Queue_len,                  /* sq_length */
+    NULL,                                 /* sq_concat */
+    NULL,                                 /* sq_repeat */
+    (ssizeargfunc)Queue_item,             /* sq_item */
+    NULL,                                 /* sq_slice */
+    NULL,                                 /* sq_as_item */
+    NULL,                                 /* sq_as_slice */
+    (objobjproc)Queue_contains            /* sq_contains */
 };
 
 static PyMethodDef Queue_methods[] = {

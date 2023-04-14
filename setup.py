@@ -30,6 +30,7 @@ ctype_ext = [
 ]
 
 setup(
+    include_package_data=True,
     packages=["mqueue"],
     ext_modules=ctype_ext + [
         Extension(
