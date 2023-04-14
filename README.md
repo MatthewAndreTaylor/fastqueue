@@ -1,14 +1,14 @@
 # mqueue
 
 ![Tests](https://github.com/MatthewAndreTaylor/mqueue/actions/workflows/tests.yml/badge.svg)
-[![PyPI Versions](https://img.shields.io/badge/python-3.8%2B-blue)]()
+[![PyPI Versions](https://img.shields.io/badge/python-3.9%2B-blue)]()
 [![PyPI license](https://img.shields.io/badge/license-MIT-%23373737)]()
 
 Single ended fast queue's built in C for python.
 
 ## Requirements
 
-- `python 3.8+`
+- `python 3.9+`
 
 ## Installation
 
