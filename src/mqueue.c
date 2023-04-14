@@ -316,16 +316,6 @@ static PyObject* Queue_dequeue(Queue_t* self, PyObject* args) {
     return py_object;
 }
 
-// Deallocate the Queue
-static void Queue_dealloc(Queue_t* self) {
-    if (self == NULL)
-        return;
-    PyObject_GC_UnTrack(self);
-    if (self->head != NULL)
-        Queue_clear(self);
-    Py_TYPE(self)->tp_free((PyObject*)self);
-}
-
 static int Queue_clear(Queue_t *self) {
     if (self->length == 0)
         return 0;
@@ -348,6 +338,16 @@ static int Queue_clear(Queue_t *self) {
     self->head = NULL;
     self->tail = NULL;
     return 0;
+}
+
+// Deallocate the Queue
+static void Queue_dealloc(Queue_t* self) {
+    if (self == NULL)
+        return;
+    PyObject_GC_UnTrack(self);
+    if (self->head != NULL)
+        Queue_clear(self);
+    Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
