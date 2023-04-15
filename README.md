@@ -35,3 +35,9 @@ pip install mqueue-lib
 >>> [queue.dequeue() for _ in range(len(queue)) ]
 ['🚒', '🛴', '🚅', '🚗']
 ```
+
+## Example Benchmarks
+![Queue_times](https://user-images.githubusercontent.com/100451342/232172485-c17b6b33-986f-461b-b0bf-b26b3f6e8304.png)
+![Queue_types](https://user-images.githubusercontent.com/100451342/232172490-bd90b021-7aeb-47b8-99e0-2481ccbc1f8f.png)
+
+
