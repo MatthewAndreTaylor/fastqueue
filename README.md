@@ -17,7 +17,7 @@ Single ended fast queue's built in C tuned for python.
 To install fastqueue, using pip:
 
 ```bash
-pip install fastqueue
+pip install fastqueue-lib
 ```
 
 ## Quickstart
