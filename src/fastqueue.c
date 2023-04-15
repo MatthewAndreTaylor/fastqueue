@@ -1,8 +1,11 @@
+/**
+ * Copyright (c) 2023 Matthew Andre Taylor
+ */
 #include <Python.h>
 
 /**
  * Single ended Contiguous Python Queue
- * --- mqueue.QueueC ---
+ * --- fastqueue.QueueC ---
  */
 typedef struct {
     PyObject_VAR_HEAD
@@ -151,15 +154,15 @@ static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
         PyErr_SetString(PyExc_IndexError, "queue index out of range");
         return -1;
     }
-    
+
     PyObject* oldObject = self->objects[(self->back + index) % self->capacity];
     Py_DECREF(oldObject);
     if (object == NULL) {
-        self->objects[(self->back + index) % self->capacity] = Py_None; 
-    } 
+        self->objects[(self->back + index) % self->capacity] = Py_None;
+    }
     else {
         Py_INCREF(object);
-        self->objects[(self->back + index) % self->capacity] = object; 
+        self->objects[(self->back + index) % self->capacity] = object;
     }
     return 0;
 }
@@ -239,7 +242,7 @@ static PyTypeObject QueueCType = {
 
 /**
  * Single ended Python Queue with subqueue chunks
- * --- mqueue.QueueC ---
+ * --- fastqueue.QueueC ---
  */
 typedef struct QueueNode {
     PyObject* py_objects[256];
@@ -416,7 +419,7 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
         PyErr_SetString(PyExc_IndexError, "queue index out of range");
         return NULL;
     }
-    
+
     QueueNode_t* current = self->head;
     for (int i = 0; i < (int)(index / 256); ++i) {
         current = current->next;
@@ -434,7 +437,7 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
         PyErr_SetString(PyExc_IndexError, "queue index out of range");
         return -1;
     }
-    
+
     QueueNode_t* current = self->head;
     for (int i = 0; i < (int)(index / 256); ++i) {
         current = current->next;
@@ -442,11 +445,11 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
     PyObject* oldObject = current->py_objects[(current->back + index) & 255];
     Py_DECREF(oldObject);
     if (object == NULL) {
-        current->py_objects[(current->back + index) & 255] = Py_None; 
-    } 
+        current->py_objects[(current->back + index) & 255] = Py_None;
+    }
     else {
         Py_INCREF(object);
-        current->py_objects[(current->back + index) & 255] = object; 
+        current->py_objects[(current->back + index) & 255] = object;
     }
     return 0;
 }
@@ -528,13 +531,13 @@ static PyTypeObject QueueType = {
 
 static PyModuleDef QueueModuleDef = {
     PyModuleDef_HEAD_INIT,
-    "mqueue",
+    "_fastqueue",
     "Singly linked, small overhead implementations of the Queue data structure.",
     -1,
     NULL, NULL, NULL, NULL, NULL
 };
 
-PyMODINIT_FUNC PyInit_mqueue(void) {
+PyMODINIT_FUNC PyInit__fastqueue(void) {
     PyObject* module;
     if (PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0)
         return NULL;

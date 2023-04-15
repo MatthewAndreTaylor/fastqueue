@@ -1,4 +1,4 @@
-# mqueue
+# fastqueue
 
 [![Tests](https://github.com/MatthewAndreTaylor/mqueue/actions/workflows/tests.yml/badge.svg)](https://github.com/MatthewAndreTaylor/mqueue/actions)
 [![PyPI Versions](https://img.shields.io/badge/python-3.9%2B-blue)](https://github.com/MatthewAndreTaylor/mqueue/blob/master/pyproject.toml)
@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/badge/pypi-v0.0.1-blue)](https://pypi.org/project/mqueue-lib/)
 
 
-Single ended fast queue's built in C for python.
+Single ended fast queue's built in C tuned for python.
 
 ## Requirements
 
@@ -14,25 +14,56 @@ Single ended fast queue's built in C for python.
 
 ## Installation
 
-To install mqueue, using pip:
+To install fastqueue, using pip:
 
 ```bash
-pip install mqueue-lib
+pip install fastqueue
 ```
 
 ## Quickstart
 
+For general use cases `fastqueue.Queue()` objects are tuned to perform well.
+The enqueue and dequeue methods perform well over a large sequence of arbitrary operations.
+`fastqueue.Queue()` supports many standard sequence methods similar to lists.
+`fastqueue.Queue()` minimizes memory usage but maintains the fast queue speeds.
+
 ```py
->>> from mqueue.mqueue import *
+>>> from fastqueue import Queue
 >>> queue = Queue()
 >>> queue.extend(['🚒', '🛴'])
 >>> queue[0]
 '🚒'
+>>> '🛴' in queue
+True
 >>> queue.enqueue('🚅')
 >>> queue.enqueue('🚗')
 >>> queue[-1]
 '🚗'
 >>> [queue.dequeue() for _ in range(len(queue)) ]
+['🚒', '🛴', '🚅', '🚗']
+```
+
+
+For more specialized cases `fastqueue.QueueC()` objects are tuned to perform well.
+The interface for `fastqueue.QueueC()` is identical to `fastqueue.Queue()`.
+The enqueue and dequeue methods perform similarly well over a large sequence of arbitrary operations.
+`fastqueue.QueueC()` handles memory differently by doubling the capacity when full.
+This increases the complexity but maintains fast amortized cost.
+The benefit of this approach is even faster `__getitem__` and `__setitem__` speeds
+
+```py
+>>> from fastqueue import QueueC
+>>> queue_c = QueueC()
+>>> queue_c.extend(['🚒', '🛴'])
+>>> queue_c[0]
+'🚒'
+>>> '🛴' in queue_c
+True
+>>> queue_c.enqueue('🚅')
+>>> queue_c.enqueue('🚗')
+>>> queue_c[-1]
+'🚗'
+>>> [queue_c.dequeue() for _ in range(len(queue_c)) ]
 ['🚒', '🛴', '🚅', '🚗']
 ```
 

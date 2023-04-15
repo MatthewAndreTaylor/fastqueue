@@ -2,7 +2,7 @@ import collections
 import sys
 import time
 import matplotlib.pyplot as plt
-from mqueue.mqueue import *
+from fastqueue import *
 
 fig, ax = plt.subplots()
 queue_sizes = [100, 1000, 10000, 100000, 1000000, 4000000]

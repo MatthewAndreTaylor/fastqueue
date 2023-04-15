@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mqueue-lib"
+name = "fastqueue"
 version = "0.0.1"
 description="Fast single ended queue library for python"
 authors = [

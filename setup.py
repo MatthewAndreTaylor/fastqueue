@@ -20,22 +20,22 @@ class build_ext(build_ext_orig):
 
 ctype_ext = [
     Extension(
-        "mqueue.cllqueue",
+        "fastqueue.cllqueue",
         ["src/cllqueue.cpp"],
     ),
     Extension(
-        "mqueue.ccqueue",
+        "fastqueue.ccqueue",
         ["src/ccqueue.cpp"],
     )
 ]
 
 setup(
     include_package_data=True,
-    packages=["mqueue"],
+    packages=["fastqueue"],
     ext_modules=ctype_ext + [
         Extension(
-            "mqueue.mqueue",
-            ["src/mqueue.c"],
+            "_fastqueue",
+            ["src/fastqueue.c"],
         )
     ],
     cmdclass={"build_ext": build_ext}

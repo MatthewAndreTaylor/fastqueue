@@ -2,8 +2,8 @@ import queue
 import sys
 import time
 import matplotlib.pyplot as plt
-from mqueue.prototype_mqueue import *
-from mqueue.mqueue import *
+from fastqueue.prototypes import *
+from fastqueue import *
 
 queue_size = 1000000
 queue_structures = {

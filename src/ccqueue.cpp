@@ -1,3 +1,6 @@
+/**
+ * Copyright (c) 2023 Matthew Andre Taylor
+ */
 #ifdef _WIN32
 #define QUEUE_LIBRARY_API extern "C" __declspec(dllexport)
 #else
