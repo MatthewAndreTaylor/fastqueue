@@ -2,6 +2,7 @@
  * Copyright (c) 2023 Matthew Andre Taylor
  */
 #include <Python.h>
+#include "pythread.h"
 
 /**
  * Single ended Contiguous Python Queue
@@ -138,7 +139,7 @@ static PyObject* QueueC_item(QueueC* self, Py_ssize_t index) {
     if (index < 0)
         index = index + QueueC_len(self);
     if (index >= self->length) {
-        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return NULL;
     }
     PyObject* object = self->objects[(self->back + index) % self->capacity];
@@ -151,7 +152,7 @@ static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
         index = QueueC_len(self) + index;
 
     if (index >= self->length) {
-        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return -1;
     }
 
@@ -185,7 +186,7 @@ static PySequenceMethods QueueC_sequence_methods = {
     (ssizeobjargproc)QueueC_setitem,      /* sq_as_item */
     NULL,                                 /* sq_as_slice */
     (objobjproc)QueueC_contains,          /* sq_contains */
-    (binaryfunc)QueueC_extend             /* sq_inplace_concat */
+    0                                     /* sq_inplace_concat */
 };
 
 static PyMethodDef QueueC_methods[] = {
@@ -345,7 +346,7 @@ static PyObject* Queue_dequeue(Queue_t* self) {
     return py_object;
 }
 
-static int Queue_clear(Queue_t *self) {
+static int Queue_clear(Queue_t* self) {
     if (self->length == 0)
         return 0;
 
@@ -416,7 +417,7 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
         index = Queue_len(self) + index;
 
     if (index >= self->length) {
-        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return NULL;
     }
 
@@ -434,7 +435,7 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
         index = Queue_len(self) + index;
 
     if (index >= self->length) {
-        PyErr_SetString(PyExc_IndexError, "queue index out of range");
+        PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return -1;
     }
 
@@ -467,15 +468,15 @@ static int Queue_contains(Queue_t* self, PyObject* object) {
 }
 
 static PySequenceMethods Queue_sequence_methods = {
-    (lenfunc)Queue_len,                  /* sq_length */
-    NULL,                                 /* sq_concat */
+    (lenfunc)Queue_len,                   /* sq_length */
+    0,                                    /* sq_concat */
     NULL,                                 /* sq_repeat */
     (ssizeargfunc)Queue_item,             /* sq_item */
     NULL,                                 /* sq_slice */
     (ssizeobjargproc)Queue_setitem,       /* sq_as_item */
     NULL,                                 /* sq_as_slice */
     (objobjproc)Queue_contains,           /* sq_contains */
-    (binaryfunc)Queue_extend              /* sq_inplace_concat */
+    0                                     /* sq_inplace_concat */
 };
 
 static PyMethodDef Queue_methods[] = {
@@ -529,6 +530,155 @@ static PyTypeObject QueueType = {
     PyObject_GC_Del,                            /* tp_free */
 };
 
+typedef struct LockQueue {
+    PyObject_HEAD
+    Queue_t* queue;
+    PyThread_type_lock lock;
+} LockQueue_t;
+
+static PyObject* LockQueue_new(PyTypeObject* type, PyObject* args, PyObject* kwargs) {
+    LockQueue_t* self = (LockQueue_t*)type->tp_alloc(type, 0);
+    if (self == NULL)
+        return PyErr_NoMemory();
+
+    self->queue = (Queue_t*)Queue_new(&QueueType, args, kwargs);
+    self->lock = NULL;
+    return (PyObject*)self;
+}
+
+static int LockQueue_init(LockQueue_t* self, PyObject* args, PyObject *kwargs) {
+    self->lock = PyThread_allocate_lock();
+    if (self == NULL) {
+        PyErr_SetString(PyExc_MemoryError, "Could not allocate thread lock.");
+        return -1;
+    }
+    return 0;
+}
+
+static void LockQueue_dealloc(LockQueue_t* self) {
+    PyThread_free_lock(self->lock);
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static int LockQueue_traverse(LockQueue_t* self, visitproc visit, void* arg) {
+    return Queue_traverse(self->queue, visit, arg);
+}
+
+static int LockQueue_clear(LockQueue_t* self) {
+    return Queue_clear(self->queue);
+}
+
+static PyObject* LockQueue_call_with_lock(LockQueue_t* self, PyObject* args, PyObject* (*func)(Queue_t*, PyObject*)) {
+    PyThread_acquire_lock(self->lock, WAIT_LOCK);
+    PyObject* result = func(self->queue, args);
+    PyThread_release_lock(self->lock);
+    return result;
+}
+
+static PyObject* LockQueue_is_empty(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_is_empty);
+}
+
+static PyObject* LockQueue_enqueue(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_enqueue);
+}
+
+static PyObject* LockQueue_dequeue(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_dequeue);
+}
+
+static PyObject* LockQueue_extend(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_extend);
+}
+
+static PyObject* LockQueue_item(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_item);
+}
+
+static Py_ssize_t LockQueue_len(LockQueue_t* self) {
+    PyThread_acquire_lock(self->lock, 1);
+    Py_ssize_t res = (Py_ssize_t)self->queue->length;
+    PyThread_release_lock(self->lock);
+    return res;
+}
+
+static int LockQueue_setitem(LockQueue_t* self, Py_ssize_t index, PyObject* args) {
+    PyThread_acquire_lock(self->lock, 1);
+    int res = Queue_setitem(self->queue, index, args);
+    PyThread_release_lock(self->lock);
+    return res;
+}
+
+static int LockQueue_contains(LockQueue_t* self, PyObject* args) {
+    PyThread_acquire_lock(self->lock, 1);
+    int res = Queue_contains(self->queue, args);
+    PyThread_release_lock(self->lock);
+    return res;
+}
+
+static PyMethodDef LockQueue_methods[] = {
+    {"is_empty", (PyCFunction)LockQueue_is_empty, METH_NOARGS, is_empty_doc},
+    {"enqueue", (PyCFunction)LockQueue_enqueue, METH_O, enqueue_doc},
+    {"dequeue", (PyCFunction)LockQueue_dequeue, METH_NOARGS, dequeue_doc},
+    {"extend", (PyCFunction)LockQueue_extend, METH_O, extend_doc},
+    {NULL, NULL, 0, NULL}
+};
+
+static PySequenceMethods LockQueue_sequence_methods = {
+    (lenfunc)LockQueue_len,               /* sq_length */
+    0,                                    /* sq_concat */
+    NULL,                                 /* sq_repeat */
+    (ssizeargfunc)LockQueue_item,         /* sq_item */
+    NULL,                                 /* sq_slice */
+    (ssizeobjargproc)LockQueue_setitem,   /* sq_as_item */
+    NULL,                                 /* sq_as_slice */
+    (objobjproc)LockQueue_contains,       /* sq_contains */
+    0                                     /* sq_inplace_concat */
+};
+
+PyDoc_STRVAR(lockqueue_doc,"LockQueue() -> Single ended synchronous Queue object.");
+static PyTypeObject LockQueueType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "LockQueue",                                /* tp_name */
+    sizeof(LockQueue_t),                        /* tp_basicsize */
+    0,                                          /* tp_itemsize */
+    (destructor)LockQueue_dealloc,              /* tp_dealloc */
+    0,                                          /* tp_print */
+    0,                                          /* tp_getattr */
+    0,                                          /* tp_setattr */
+    0,                                          /* tp_reserved */
+    0,                                          /* tp_repr */
+    0,                                          /* tp_as_number */
+    &LockQueue_sequence_methods,                /* tp_as_sequence */
+    0,                                          /* tp_as_mapping */
+    PyObject_HashNotImplemented,                /* tp_hash */
+    0,                                          /* tp_call */
+    0,                                          /* tp_str */
+    PyObject_GenericGetAttr,                    /* tp_getattro */
+    0,                                          /* tp_setattro */
+    0,                                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,    /* tp_flags */
+    lockqueue_doc,                              /* tp_doc */
+    (traverseproc)LockQueue_traverse,           /* tp_traverse */
+    (inquiry)LockQueue_clear,                   /* tp_clear */
+    0,                                          /* tp_richcompare */
+    0,                                          /* tp_weaklistoffset */
+    0,                                          /* tp_iter */
+    0,                                          /* tp_iternext */
+    LockQueue_methods,                          /* tp_methods */
+    0,                                          /* tp_members */
+    0,                                          /* tp_getset */
+    0,                                          /* tp_base */
+    0,                                          /* tp_dict */
+    0,                                          /* tp_descr_get */
+    0,                                          /* tp_descr_set */
+    0,                                          /* tp_dictoffset */
+    (initproc)LockQueue_init,                   /* tp_init */
+    PyType_GenericAlloc,                        /* tp_alloc */
+    (newfunc)LockQueue_new,                     /* tp_new */
+    PyObject_GC_Del,                            /* tp_free */
+};
+
 static PyModuleDef QueueModuleDef = {
     PyModuleDef_HEAD_INIT,
     "_fastqueue",
@@ -547,5 +697,6 @@ PyMODINIT_FUNC PyInit__fastqueue(void) {
         return NULL;
     PyModule_AddType(module, &QueueCType);
     PyModule_AddType(module, &QueueType);
+    PyModule_AddType(module, &LockQueueType);
     return module;
 }

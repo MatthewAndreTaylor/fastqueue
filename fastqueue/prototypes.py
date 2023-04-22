@@ -8,17 +8,14 @@ class LLNode(Structure):
     pass
 
 
-LLNode._fields_ = [
-    ('val', py_object),
-    ('next', POINTER(LLNode))
-]
+LLNode._fields_ = [("val", py_object), ("next", POINTER(LLNode))]
 
 
 class LLNodeQueue(Structure):
     _fields_ = [
-        ('front', POINTER(LLNode)),
-        ('back', POINTER(LLNode)),
-        ('length', c_uint)
+        ("front", POINTER(LLNode)),
+        ("back", POINTER(LLNode)),
+        ("length", c_uint),
     ]
 
 
@@ -73,11 +70,11 @@ class LLQueue:
 # Matt's Contiguous Queue
 class ContiguousQueue(Structure):
     _fields_ = [
-        ('objects', POINTER(py_object)),
-        ('length', c_int),
-        ('capacity', c_int),
-        ('front', c_int),
-        ('back', c_int)
+        ("objects", POINTER(py_object)),
+        ("length", c_int),
+        ("capacity", c_int),
+        ("front", c_int),
+        ("back", c_int),
     ]
 
 

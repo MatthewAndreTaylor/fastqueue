@@ -1,9 +1,9 @@
 # fastqueue
 
 [![Tests](https://github.com/MatthewAndreTaylor/fastqueue/actions/workflows/tests.yml/badge.svg)](https://github.com/MatthewAndreTaylor/fastqueue/actions)
-[![PyPI Versions](https://img.shields.io/badge/python-3.9%2B-blue)](https://github.com/MatthewAndreTaylor/fastqueue/blob/master/pyproject.toml)
+[![PyPI versions](https://img.shields.io/badge/python-3.9%2B-blue)](https://github.com/MatthewAndreTaylor/fastqueue/)
 [![PyPI license](https://img.shields.io/badge/license-MIT-%23373737)](https://github.com/MatthewAndreTaylor/fastqueue/blob/master/LICENSE)\
-[![PyPI](https://img.shields.io/badge/pypi-v0.0.1-blue)](https://pypi.org/project/fastqueue-lib/)
+[![PyPI](https://img.shields.io/pypi/v/fastqueue-lib.svg)](https://pypi.org/project/fastqueue-lib/)
 
 
 Single ended fast queue's built in C tuned for python.
@@ -66,6 +66,9 @@ True
 >>> [queue_c.dequeue() for _ in range(len(queue_c)) ]
 ['🚒', '🛴', '🚅', '🚗']
 ```
+
+Another alternative is `fastqueue.LockQueue()` which supports all queue operations.
+`fastqueue.LockQueue()` is built as a thread-safe alternative to the other queue types.
 
 ## Example Benchmarks
 ![Queue_times](https://user-images.githubusercontent.com/100451342/232172485-c17b6b33-986f-461b-b0bf-b26b3f6e8304.png)
