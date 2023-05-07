@@ -124,6 +124,16 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
     PyObject* py_object;
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
+
+    // Small optimization sizing, amortized approach is still very good
+    PySequenceMethods* sequence_methods = Py_TYPE(iterable)->tp_as_sequence;
+    if (sequence_methods != NULL) {
+        int len = (int) sequence_methods->sq_length(iterable);
+        if (self->length + len > self->capacity) {
+            QueueC_resize(self, (self->capacity + len) * 2);
+        }
+    }
+
     while ((py_object = next(iterable)) != NULL) {
         QueueC_enqueue(self, py_object);
     }
