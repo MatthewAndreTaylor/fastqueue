@@ -26,17 +26,18 @@ ctype_ext = [
     Extension(
         "fastqueue.ccqueue",
         ["src/ccqueue.cpp"],
-    )
+    ),
 ]
 
 setup(
     include_package_data=True,
     packages=["fastqueue"],
-    ext_modules=ctype_ext + [
+    ext_modules=ctype_ext
+    + [
         Extension(
             "_fastqueue",
             ["src/fastqueue.c"],
         )
     ],
-    cmdclass={"build_ext": build_ext}
+    cmdclass={"build_ext": build_ext},
 )

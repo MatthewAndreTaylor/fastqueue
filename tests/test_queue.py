@@ -7,10 +7,9 @@ queue_size = 500000
 
 
 @pytest.mark.parametrize(
-    "queue_type", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
+    "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_newQueue(queue_type):
-    queue = queue_type
+def test_newQueue(queue):
     assert queue.is_empty()
     assert len(queue) == 0
     queue.enqueue(1)
@@ -33,10 +32,9 @@ def test_newQueue(queue_type):
 
 
 @pytest.mark.parametrize(
-    "queue_type", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
+    "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_mutationQueue(queue_type):
-    queue = queue_type
+def test_mutationQueue(queue):
     queue.enqueue(1)
     item = queue.dequeue()
     assert item == 1
@@ -48,10 +46,9 @@ def test_mutationQueue(queue_type):
 
 
 @pytest.mark.parametrize(
-    "queue_type", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
+    "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_largeQueue(queue_type):
-    queue = queue_type
+def test_largeQueue(queue):
     for i in range(queue_size):
         queue.enqueue(i)
     assert not queue.is_empty()
@@ -60,9 +57,8 @@ def test_largeQueue(queue_type):
         assert queue.dequeue() == i
 
 
-@pytest.mark.parametrize("queue_type", [LockQueue(), Queue(), QueueC()])
-def test_extendQueue(queue_type):
-    queue = queue_type
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
+def test_extendQueue(queue):
     queue.extend(range(queue_size))
     assert not queue.is_empty()
     assert len(queue) == queue_size
@@ -76,11 +72,44 @@ def test_extendQueue(queue_type):
     assert len(queue) == 3
     assert lst == [1, 2, 3]
     assert lst[2] == 3
+    assert queue[2] == 3
 
 
-@pytest.mark.parametrize("queue_type", [LockQueue(), Queue(), QueueC()])
-def test_getitemQueue(queue_type):
-    queue = queue_type
+@pytest.mark.parametrize("queue", [Queue(), LockQueue(), QueueC()])
+def test_mixed_extendQueue(queue):
+    size = 50
+    queue.enqueue(1)
+    queue.enqueue(2)
+    queue.enqueue(3)
+    queue.extend(range(size))
+    queue.enqueue(4)
+    queue.enqueue(5)
+    queue.enqueue(6)
+
+    assert not queue.is_empty()
+    assert len(queue) == size + 6
+    assert [queue.dequeue() for _ in range(size + 6)] == [1, 2, 3] + list(
+        range(size)
+    ) + [4, 5, 6]
+    assert queue.is_empty()
+    assert len(queue) == 0
+
+    size = 50
+    for i in range(10):
+        queue.enqueue(i)
+    for _ in range(10):
+        queue.dequeue()
+    queue.extend(range(size))
+
+    assert not queue.is_empty()
+    assert len(queue) == size
+    assert [queue.dequeue() for _ in range(size)] == list(range(size))
+    assert queue.is_empty()
+    assert len(queue) == 0
+
+
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
+def test_getitemQueue(queue):
     queue.extend(range(1000))
     assert queue[0] == queue[0]
     item = queue[0]
@@ -97,9 +126,8 @@ def test_getitemQueue(queue_type):
     assert queue[len(queue) - 3] == queue[-3]
 
 
-@pytest.mark.parametrize("queue_type", [LockQueue(), Queue(), QueueC()])
-def test_setitemQueue(queue_type):
-    queue = queue_type
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
+def test_setitemQueue(queue):
     queue.extend(range(1000))
     queue[0] = "🙂"
     assert queue[0] == "🙂"
@@ -116,9 +144,8 @@ def test_setitemQueue(queue_type):
         queue[1000] = 90
 
 
-@pytest.mark.parametrize("queue_type", [LockQueue(), Queue(), QueueC()])
-def test_containsQueue(queue_type):
-    queue = queue_type
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
+def test_containsQueue(queue):
     queue.extend(range(queue_size))
     assert not (queue_size in queue)
     for i in range(258):

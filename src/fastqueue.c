@@ -9,7 +9,7 @@
  * --- fastqueue.QueueC ---
  */
 typedef struct {
-    PyObject_VAR_HEAD
+    PyObject_HEAD
     PyObject** objects;
     int length;
     int capacity;
@@ -85,10 +85,18 @@ static void QueueC_resize(QueueC* self, int newCapacity) {
     for (int i = 0; i < self->length; ++i) {
         newObjects[i] = self->objects[(self->back + i) % self->capacity];
     }
-
+    self->front = self->length - 1;
+    self->back = 0;
     free(self->objects);
     self->objects = newObjects;
     self->capacity = newCapacity;
+}
+
+static inline void QueueC_put(QueueC* self, PyObject* object) {
+    Py_INCREF(object);
+    self->front = (self->front + 1) % self->capacity;
+    self->objects[self->front] = object;
+    self->length++;
 }
 
 static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
@@ -97,10 +105,7 @@ static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
     if (self->length == self->capacity)
         QueueC_resize(self, self->capacity * 2);
 
-    Py_INCREF(object);
-    self->front = (self->front + 1) % self->capacity;
-    self->objects[self->front] = object;
-    self->length++;
+    QueueC_put(self, object);
     Py_RETURN_NONE;
 }
 
@@ -125,18 +130,24 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
 
-    // Small optimization sizing, amortized approach is still very good
-    PySequenceMethods* sequence_methods = Py_TYPE(iterable)->tp_as_sequence;
-    if (sequence_methods != NULL) {
-        int len = (int) sequence_methods->sq_length(iterable);
+    if (PySequence_Check(iterable)) {
+        // Small optimization sizing, amortized approach is still very good
+        int len = (int) PyObject_Size(iterable);
+        printf("Len %d", len);
         if (self->length + len > self->capacity) {
             QueueC_resize(self, (self->capacity + len) * 2);
         }
+
+        while ((py_object = next(iterable)) != NULL) {
+            QueueC_put(self, py_object);
+        }
+    }
+    else {
+        while ((py_object = next(iterable)) != NULL) {
+            QueueC_enqueue(self, py_object);
+        }
     }
 
-    while ((py_object = next(iterable)) != NULL) {
-        QueueC_enqueue(self, py_object);
-    }
     Py_DECREF(iterable);
     Py_RETURN_NONE;
 }
@@ -699,7 +710,7 @@ static PyModuleDef QueueModuleDef = {
 
 PyMODINIT_FUNC PyInit__fastqueue(void) {
     PyObject* module;
-    if (PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0)
+    if (PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0 || PyType_Ready(&LockQueueType) < 0)
         return NULL;
 
     module = PyModule_Create(&QueueModuleDef);

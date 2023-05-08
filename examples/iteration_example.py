@@ -29,4 +29,3 @@ ARR = time.time() - start
 
 print("Iteration:")
 print("Array: ", ARR, "Queue: ", QUE)
-
