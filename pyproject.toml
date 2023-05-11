@@ -9,7 +9,7 @@ description="Fast single ended queue library for python"
 authors = [
     {name = "Matthew Taylor", email = "matthew.taylor.andre@gmail.com"},
 ]
-urls = {Homepage = "https://github.com/MatthewAndreTaylor/mqueue"}
+urls = {Homepage = "https://github.com/MatthewAndreTaylor/fastqueue"}
 requires-python = ">=3.9"
 keywords = [ "Queue" ]
 classifiers = [
@@ -30,5 +30,5 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
-examples = [ "matplotlib" ]
+examples = [ "matplotlib", "numpy" ]
 tests = [ "pytest" ]

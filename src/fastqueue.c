@@ -130,10 +130,9 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
 
-    if (PySequence_Check(iterable)) {
-        // Small optimization sizing, amortized approach is still very good
-        int len = (int) PyObject_Size(iterable);
-        printf("Len %d", len);
+    // Small optimization sizing, amortized approach is still very good
+    Py_ssize_t len = PyObject_Size(iterator);
+    if (len > self->length) {
         if (self->length + len > self->capacity) {
             QueueC_resize(self, (self->capacity + len) * 2);
         }
@@ -586,11 +585,14 @@ static int LockQueue_traverse(LockQueue_t* self, visitproc visit, void* arg) {
 }
 
 static int LockQueue_clear(LockQueue_t* self) {
-    return Queue_clear(self->queue);
+    PyThread_acquire_lock(self->lock, 1);
+    int res = Queue_clear(self->queue);
+    PyThread_release_lock(self->lock);
+    return res;
 }
 
 static PyObject* LockQueue_call_with_lock(LockQueue_t* self, PyObject* args, PyObject* (*func)(Queue_t*, PyObject*)) {
-    PyThread_acquire_lock(self->lock, WAIT_LOCK);
+    PyThread_acquire_lock(self->lock, 1);
     PyObject* result = func(self->queue, args);
     PyThread_release_lock(self->lock);
     return result;
@@ -604,16 +606,22 @@ static PyObject* LockQueue_enqueue(LockQueue_t* self, PyObject* args) {
     return LockQueue_call_with_lock(self, args, &Queue_enqueue);
 }
 
-static PyObject* LockQueue_dequeue(LockQueue_t* self, PyObject* args) {
-    return LockQueue_call_with_lock(self, args, &Queue_dequeue);
+static PyObject* LockQueue_dequeue(LockQueue_t* self) {
+    PyThread_acquire_lock(self->lock, 1);
+    PyObject* result = Queue_dequeue(self->queue);
+    PyThread_release_lock(self->lock);
+    return result;
 }
 
 static PyObject* LockQueue_extend(LockQueue_t* self, PyObject* args) {
     return LockQueue_call_with_lock(self, args, &Queue_extend);
 }
 
-static PyObject* LockQueue_item(LockQueue_t* self, PyObject* args) {
-    return LockQueue_call_with_lock(self, args, &Queue_item);
+static PyObject* LockQueue_item(LockQueue_t* self, Py_ssize_t index) {
+    PyThread_acquire_lock(self->lock, 1);
+    PyObject* result = Queue_item(self->queue, index);
+    PyThread_release_lock(self->lock);
+    return result;
 }
 
 static Py_ssize_t LockQueue_len(LockQueue_t* self) {
