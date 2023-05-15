@@ -42,12 +42,33 @@ static PyObject* QueueC_new(PyTypeObject* type, PyObject* args, PyObject* kwargs
     return (PyObject*)self;
 }
 
+static PyObject* QueueC_copy(QueueC* self, PyObject* args) {
+    QueueC* copy = (QueueC*)Py_TYPE(self)->tp_alloc(Py_TYPE(self), 0);
+    if (copy == NULL)
+        return PyErr_NoMemory();
+
+    copy->objects = (PyObject**) malloc(self->capacity * sizeof(PyObject*));
+    if (copy->objects == NULL) {
+        Py_DECREF(copy);
+        return PyErr_NoMemory();
+    }
+    for (int i = 0; i < self->length; ++i) {
+        int index = (self->back + i) % self->capacity;
+        copy->objects[index] = self->objects[index];
+        Py_INCREF(copy->objects[index]);
+    }
+    copy->length = self->length;
+    copy->capacity = self->capacity;
+    copy->front = self->front;
+    copy->back = self->back;
+    return (PyObject*)copy;
+}
+
 static void QueueC_dealloc(QueueC* self) {
     if (self == NULL)
         return;
     PyObject_GC_UnTrack(self);
     free(self->objects);
-    self->objects = NULL;
     Py_TYPE(self)->tp_free(self);
 }
 
@@ -151,6 +172,14 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
     Py_RETURN_NONE;
 }
 
+static int QueueC_init(QueueC* self, PyObject* args, PyObject* kwargs) {
+    if (PyTuple_GET_SIZE(args) > 0) {
+        PyObject* iterable = PyTuple_GET_ITEM(args, 0);
+        QueueC_extend(self, iterable);
+    }
+    return 0;
+}
+
 static Py_ssize_t QueueC_len(QueueC* self) {
     return (Py_ssize_t)self->length;
 }
@@ -214,6 +243,8 @@ static PyMethodDef QueueC_methods[] = {
     {"dequeue", (PyCFunction)QueueC_dequeue, METH_NOARGS, "Remove and return an object from the back of the QueueC."},
     {"is_empty", (PyCFunction)QueueC_is_empty, METH_NOARGS, "Check if the QueueC is empty."},
     {"extend", (PyCFunction)QueueC_extend, METH_O, "Add an objects from an iterator front of the QueueC."},
+    {"__copy__", (PyCFunction)QueueC_copy, METH_NOARGS, "Return a shallow copy of the QueueC."},
+    {"copy", (PyCFunction)QueueC_copy, METH_NOARGS, "Return a shallow copy of the QueueC."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -254,7 +285,7 @@ static PyTypeObject QueueCType = {
     0,                                          /* tp_descr_get */
     0,                                          /* tp_descr_set */
     0,                                          /* tp_dictoffset */
-    0,                                          /* tp_init */
+    (initproc)QueueC_init,                      /* tp_init */
     PyType_GenericAlloc,                        /* tp_alloc */
     QueueC_new,                                 /* tp_new */
     PyObject_GC_Del,                            /* tp_free */
@@ -309,6 +340,46 @@ static PyObject* Queue_new(PyTypeObject* type, PyObject* args, PyObject* kwargs)
     return (PyObject*)self;
 }
 
+PyDoc_STRVAR(copy_doc, "Return a shallow copy of the Queue.");
+static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
+    Queue_t* newQueue = (Queue_t*)Queue_new(Py_TYPE(self), args, NULL);
+    if (newQueue == NULL)
+        return PyErr_NoMemory();
+
+    newQueue->length = self->length;
+    newQueue->head = NULL;
+    newQueue->tail = NULL;
+
+    QueueNode_t* current = self->head;
+    while (current != NULL) {
+        QueueNode_t* newNode = QueueNode_new();
+        if (newNode == NULL) {
+            PyErr_NoMemory();
+            return NULL;
+        }
+
+        for (int i = 0; i < current->numEntries; ++i) {
+            int index = (current->back + i) & 255;
+            newNode->py_objects[index] = current->py_objects[index];
+            Py_INCREF(current->py_objects[index]);
+        }
+
+        newNode->numEntries = current->numEntries;
+        newNode->front = current->front;
+        newNode->back = current->back;
+
+        if (newQueue->head == NULL) {
+            newQueue->head = newNode;
+        }  
+        else {
+            newQueue->tail->next = newNode;
+        }
+        newQueue->tail = newNode;
+        current = current->next;
+    }
+    return (PyObject*)newQueue;
+}
+
 // Add a py_object to the front of the QueueNode
 static inline void QueueNode_put(QueueNode_t* queue_node, PyObject* py_object) {
     Py_INCREF(py_object);
@@ -318,7 +389,7 @@ static inline void QueueNode_put(QueueNode_t* queue_node, PyObject* py_object) {
 }
 
 // Add a py_object to the last QueueNode in the Queue
-PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the queue.");
+PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the Queue.");
 static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
     if (object == Py_None)
         Py_RETURN_NONE;
@@ -342,7 +413,7 @@ static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
 }
 
 // Remove a py_object from the first QueueNode in the Queue
-PyDoc_STRVAR(dequeue_doc, "Remove and return an item from the end of the queue.");
+PyDoc_STRVAR(dequeue_doc, "Remove and return an item from the end of the Queue.");
 static PyObject* Queue_dequeue(Queue_t* self) {
     if (self->length == 0) {
         PyErr_SetString(PyExc_IndexError, "dequeue from an empty Queue");
@@ -504,6 +575,8 @@ static PyMethodDef Queue_methods[] = {
     {"dequeue", (PyCFunction)Queue_dequeue, METH_NOARGS, dequeue_doc},
     {"is_empty", (PyCFunction)Queue_is_empty, METH_NOARGS, is_empty_doc},
     {"extend", (PyCFunction)Queue_extend, METH_O, extend_doc},
+    {"__copy__", (PyCFunction)Queue_copy, METH_NOARGS, copy_doc},
+    {"copy", (PyCFunction)Queue_copy, METH_NOARGS, copy_doc},
     {NULL, NULL, 0, NULL}
 };
 
@@ -602,6 +675,10 @@ static PyObject* LockQueue_is_empty(LockQueue_t* self, PyObject* args) {
     return LockQueue_call_with_lock(self, args, &Queue_is_empty);
 }
 
+static PyObject* LockQueue_copy(LockQueue_t* self, PyObject* args) {
+    return LockQueue_call_with_lock(self, args, &Queue_copy);
+}
+
 static PyObject* LockQueue_enqueue(LockQueue_t* self, PyObject* args) {
     return LockQueue_call_with_lock(self, args, &Queue_enqueue);
 }
@@ -650,6 +727,8 @@ static PyMethodDef LockQueue_methods[] = {
     {"enqueue", (PyCFunction)LockQueue_enqueue, METH_O, enqueue_doc},
     {"dequeue", (PyCFunction)LockQueue_dequeue, METH_NOARGS, dequeue_doc},
     {"extend", (PyCFunction)LockQueue_extend, METH_O, extend_doc},
+    {"__copy__", (PyCFunction)LockQueue_copy, METH_NOARGS, copy_doc},
+    {"copy", (PyCFunction)LockQueue_copy, METH_NOARGS, copy_doc},
     {NULL, NULL, 0, NULL}
 };
 

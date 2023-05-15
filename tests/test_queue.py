@@ -75,7 +75,7 @@ def test_extendQueue(queue):
     assert queue[2] == 3
 
 
-@pytest.mark.parametrize("queue", [Queue(), LockQueue(), QueueC()])
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
 def test_mixed_extendQueue(queue):
     size = 50
     queue.enqueue(1)
@@ -153,3 +153,22 @@ def test_containsQueue(queue):
     assert (queue_size - 1) in queue
     queue.dequeue()
     assert not (0 in queue)
+
+
+@pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
+def test_copy(queue):
+    queue.extend([1, 2, 3, 4])
+    copy = queue.copy()
+    assert copy != queue
+    queue[0] = 0
+    assert copy[0] == 1
+    assert [copy.dequeue() for _ in range(len(copy))] == [1, 2, 3, 4]
+    assert len(copy) == 0
+    assert len(queue) == 4
+    assert [queue.dequeue() for _ in range(len(queue))] == [0, 2, 3, 4]
+    queue.enqueue("🎈")
+    copy = queue.copy()
+    assert len(queue) == 1
+    assert len(copy) == 1
+    assert copy[0] == "🎈"
+    assert queue[0] == "🎈"
