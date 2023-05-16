@@ -22,9 +22,9 @@ iterable_structures = [
 iterables = []
 times = []
 for iterable_type in [QueueC, deque, numpy.array]:
-    start_time = time.time()
+    start = time.time()
     iterables.append(iterable_type([i for i in range(size)]))
-    times.append(time.time() - start_time)
+    times.append(time.time() - start)
 
 fig = plt.figure(figsize=(15, 7))
 plt.bar(iterable_structures, times, color=["r", "g", "b"], width=0.5)

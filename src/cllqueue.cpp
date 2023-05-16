@@ -8,8 +8,8 @@
 #endif
 
 #include <Python.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Matt's C Linked List Queue
 
@@ -25,8 +25,9 @@ QUEUE_LIBRARY_API typedef struct queue {
 } queue_t;
 
 node_t* new_node(PyObject* object) {
-    node_t* node = (node_t*) malloc(sizeof(node_t));
-    if (node == NULL) return NULL;
+    node_t* node = (node_t*)malloc(sizeof(node_t));
+    if (node == NULL)
+        return NULL;
 
     Py_INCREF(object);
     node->object = object;
@@ -35,7 +36,7 @@ node_t* new_node(PyObject* object) {
 }
 
 QUEUE_LIBRARY_API queue_t* new_node_queue() {
-    queue_t* queue = (queue_t*) malloc(sizeof(queue_t));
+    queue_t* queue = (queue_t*)malloc(sizeof(queue_t));
     queue->front = NULL;
     queue->back = NULL;
     queue->length = 0;

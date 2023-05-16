@@ -8,8 +8,8 @@
 #endif
 
 #include <Python.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Matt's C Contiguous Queue
 QUEUE_LIBRARY_API typedef struct queue {
@@ -29,17 +29,17 @@ QUEUE_LIBRARY_API int is_empty(queue_t* queue) {
 }
 
 QUEUE_LIBRARY_API queue_t* new__queue() {
-    queue_t* queue = (queue_t*) malloc(sizeof(queue_t));
+    queue_t* queue = (queue_t*)malloc(sizeof(queue_t));
     queue->length = 0;
     queue->capacity = 256;
     queue->front = 0;
-    queue->back = queue->capacity -1;
-    queue->objects = (PyObject**) malloc(256 * sizeof(PyObject*));
+    queue->back = queue->capacity - 1;
+    queue->objects = (PyObject**)malloc(256 * sizeof(PyObject*));
     return queue;
 }
 
 void resize(queue_t* queue, int newCapacity) {
-    PyObject** newObjects = (PyObject**) malloc(newCapacity * sizeof(PyObject*));
+    PyObject** newObjects = (PyObject**)malloc(newCapacity * sizeof(PyObject*));
     for (int i = 0; i < queue->length; ++i) {
         newObjects[i] = queue->objects[(queue->front + i) % queue->capacity];
     }

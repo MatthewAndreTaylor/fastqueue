@@ -9,7 +9,7 @@ queue_size = 500000
 @pytest.mark.parametrize(
     "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_newQueue(queue):
+def test_new(queue):
     assert queue.is_empty()
     assert len(queue) == 0
     queue.enqueue(1)
@@ -34,7 +34,7 @@ def test_newQueue(queue):
 @pytest.mark.parametrize(
     "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_mutationQueue(queue):
+def test_mutation(queue):
     queue.enqueue(1)
     item = queue.dequeue()
     assert item == 1
@@ -48,7 +48,7 @@ def test_mutationQueue(queue):
 @pytest.mark.parametrize(
     "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
 )
-def test_largeQueue(queue):
+def test_large(queue):
     for i in range(queue_size):
         queue.enqueue(i)
     assert not queue.is_empty()
@@ -58,7 +58,7 @@ def test_largeQueue(queue):
 
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
-def test_extendQueue(queue):
+def test_extend(queue):
     queue.extend(range(queue_size))
     assert not queue.is_empty()
     assert len(queue) == queue_size
@@ -74,9 +74,21 @@ def test_extendQueue(queue):
     assert lst[2] == 3
     assert queue[2] == 3
 
+    queue.extend([])
+    assert len(queue) == 3
+    assert lst == [1, 2, 3]
+    assert lst[2] == 3
+    assert queue[2] == 3
+
+    with pytest.raises(TypeError):
+        queue.extend(0)
+
+    with pytest.raises(TypeError):
+        queue.extend([1, 2], [])
+
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
-def test_mixed_extendQueue(queue):
+def test_mixed_extend(queue):
     size = 50
     queue.enqueue(1)
     queue.enqueue(2)
@@ -153,6 +165,25 @@ def test_containsQueue(queue):
     assert (queue_size - 1) in queue
     queue.dequeue()
     assert not (0 in queue)
+
+
+@pytest.mark.parametrize("queue", [LockQueue, Queue, QueueC])
+def test_initialize(queue):
+    q = queue()
+    assert len(q) == 0
+    assert q.is_empty()
+    q = queue([i for i in range(10)])
+    assert len(q) == 10
+    assert not q.is_empty()
+    assert [q.dequeue() for _ in range(len(q))] == list(range(10))
+    q = queue(range(10))
+    assert len(q) == 10
+
+    with pytest.raises(TypeError):
+        q = queue(0)
+
+    with pytest.raises(TypeError):
+        q = queue([1, 2], [])
 
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
