@@ -9,7 +9,8 @@
  * --- fastqueue.QueueC ---
  */
 typedef struct {
-    PyObject_HEAD PyObject** objects;
+    PyObject_HEAD
+    PyObject** objects;
     int length;
     int capacity;
     int front;
@@ -68,6 +69,9 @@ static PyObject* QueueC_copy(QueueC* self, PyObject* args) {
 }
 
 static void QueueC_dealloc(QueueC* self) {
+    if (self == NULL) {
+        return;
+    }
     PyObject_GC_UnTrack(self);
     free(self->objects);
     Py_TYPE(self)->tp_free(self);
@@ -324,7 +328,8 @@ typedef struct QueueNode {
 } QueueNode_t;
 
 typedef struct Queue {
-    PyObject_HEAD QueueNode_t* head;
+    PyObject_HEAD
+    QueueNode_t* head;
     QueueNode_t* tail;
     int length; // Total number of py_objects stored in the queue
 } Queue_t;
@@ -339,7 +344,7 @@ static PyObject* Queue_is_empty(Queue_t* self, PyObject* args) {
 }
 
 // Initialize a new QueueNode
-static QueueNode_t* QueueNode_new() {
+static inline QueueNode_t* QueueNode_new() {
     QueueNode_t* node = (QueueNode_t*)malloc(sizeof(QueueNode_t));
     node->numEntries = 0;
     node->front = 255;
@@ -443,15 +448,15 @@ static PyObject* Queue_dequeue(Queue_t* self) {
         return NULL;
     }
 
-    PyObject* py_object = self->head->py_objects[self->head->back];
-    self->head->back = (self->head->back + 1) & 255;
-    self->head->numEntries--;
+    QueueNode_t* head = self->head;
+    PyObject* py_object = head->py_objects[head->back];
+    head->back = (head->back + 1) & 255;
+    head->numEntries--;
     self->length--;
 
-    if (self->head->numEntries <= 0) {
-        QueueNode_t* oldHead = self->head;
-        self->head = self->head->next;
-        free(oldHead);
+    if (head->numEntries <= 0) {
+        self->head = head->next;
+        free(head);
     }
 
     if (self->head == NULL) {
@@ -489,6 +494,9 @@ static int Queue_clear(Queue_t* self) {
 
 // Deallocate the Queue
 static void Queue_dealloc(Queue_t* self) {
+    if (self == NULL) {
+        return;
+    }
     PyObject_GC_UnTrack(self);
     if (self->head != NULL) {
         Queue_clear(self);
@@ -670,7 +678,8 @@ static PyTypeObject QueueType = {
 };
 
 typedef struct LockQueue {
-    PyObject_HEAD Queue_t* queue;
+    PyObject_HEAD
+    Queue_t* queue;
     PyThread_type_lock lock;
 } LockQueue_t;
 
@@ -772,6 +781,15 @@ static int LockQueue_contains(LockQueue_t* self, PyObject* args) {
     return res;
 }
 
+PyDoc_STRVAR(get_doc,
+             "Return the first element of the LockQueue, None if no element exists.");
+static PyObject* LockQueue_get(LockQueue_t* self, PyObject* args) {
+    if (LockQueue_len(self) > 0) {
+        return LockQueue_dequeue(self);
+    }
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef LockQueue_methods[] = {
     {"is_empty", (PyCFunction)LockQueue_is_empty, METH_NOARGS, is_empty_doc},
     {"enqueue", (PyCFunction)LockQueue_enqueue, METH_O, enqueue_doc},
@@ -779,6 +797,7 @@ static PyMethodDef LockQueue_methods[] = {
     {"extend", (PyCFunction)LockQueue_extend, METH_O, extend_doc},
     {"__copy__", (PyCFunction)LockQueue_copy, METH_NOARGS, copy_doc},
     {"copy", (PyCFunction)LockQueue_copy, METH_NOARGS, copy_doc},
+    {"get", (PyCFunction)LockQueue_get, METH_NOARGS, get_doc},
     {NULL, NULL, 0, NULL}};
 
 static PySequenceMethods LockQueue_sequence_methods = {

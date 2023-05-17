@@ -73,7 +73,6 @@ def test_extend(queue):
     assert lst == [1, 2, 3]
     assert lst[2] == 3
     assert queue[2] == 3
-
     queue.extend([])
     assert len(queue) == 3
     assert lst == [1, 2, 3]
@@ -178,6 +177,9 @@ def test_initialize(queue):
     assert [q.dequeue() for _ in range(len(q))] == list(range(10))
     q = queue(range(10))
     assert len(q) == 10
+    q.enqueue(10)
+    assert list(q) == [i for i in range(11)]
+    assert [q.dequeue() for _ in range(len(q))] == list(range(11))
 
     with pytest.raises(TypeError):
         q = queue(0)
