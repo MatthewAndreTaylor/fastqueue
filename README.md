@@ -1,7 +1,7 @@
 # fastqueue
 
 [![Tests](https://github.com/MatthewAndreTaylor/fastqueue/actions/workflows/tests.yml/badge.svg)](https://github.com/MatthewAndreTaylor/fastqueue/actions)
-[![PyPI versions](https://img.shields.io/badge/python-3.9%2B-blue)](https://github.com/MatthewAndreTaylor/fastqueue/)
+[![PyPI versions](https://img.shields.io/badge/python-3.7%2B-blue)](https://github.com/MatthewAndreTaylor/fastqueue/)
 [![PyPI license](https://img.shields.io/badge/license-MIT-%23373737)](https://github.com/MatthewAndreTaylor/fastqueue/blob/master/LICENSE)\
 [![PyPI](https://img.shields.io/pypi/v/fastqueue-lib.svg)](https://pypi.org/project/fastqueue-lib/)
 
@@ -10,7 +10,7 @@ Single ended fast queue's built in C tuned for python.
 
 ## Requirements
 
-- `python 3.9+`
+- `python 3.7+`
 
 ## Installation
 
