@@ -24,7 +24,10 @@ typedef struct {
 } QueueC;
 
 static PyObject* QueueC_is_empty(QueueC* self, PyObject* args) {
-    return (self->length == 0) ? Py_True : Py_False;
+    if (self->length == 0) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
 }
 
 static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
@@ -322,7 +325,10 @@ typedef struct Queue {
 } Queue_t;
 
 static PyObject* Queue_is_empty(Queue_t* self, PyObject* args) {
-    return (self->length == 0) ? Py_True : Py_False;
+    if (self->length == 0) {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
 }
 
 // Initialize a new QueueNode
