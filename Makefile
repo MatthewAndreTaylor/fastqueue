@@ -10,6 +10,7 @@ build:
 
 clean:
 	rm -rf `find . -name __pycache__`
+	rm -rf .pytest_cache
 	rm -rf *.egg-info
 	rm -rf build
 	rm -rf dist

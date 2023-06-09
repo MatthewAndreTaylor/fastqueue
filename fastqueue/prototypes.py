@@ -1,3 +1,10 @@
+"""Prototype implementations of a Queue.
+
+* LLQueue   Each element is stored as a Link List Node
+* ContQueue   Each element is stored contiguous in memory
+
+"""
+
 from ctypes import *
 from pathlib import *
 from typing import Any

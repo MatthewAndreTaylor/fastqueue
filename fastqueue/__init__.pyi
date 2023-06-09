@@ -1,6 +1,17 @@
+"""
+fastqueue
+=====
+
+* Queue
+* QueueC
+* LockQueue
+
+"""
 from typing import Any, Optional
 from collections.abc import Iterable
 from typing_extensions import Self
+
+__all__ = "Queue", "QueueC", "LockQueue"
 
 class Queue:
     def __init__(self, iterable: Optional[Iterable] = None) -> None: ...

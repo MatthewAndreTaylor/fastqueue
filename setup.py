@@ -31,6 +31,7 @@ ctype_ext = [
 
 setup(
     include_package_data=True,
+    py_modules=['fastqueue'],
     packages=["fastqueue"],
     ext_modules=ctype_ext
     + [

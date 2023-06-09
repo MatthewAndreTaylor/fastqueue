@@ -4,6 +4,13 @@
 #include <Python.h>
 #include <pythread.h>
 
+PyDoc_STRVAR(is_empty_doc, "Returns whether the Queue is empty.");
+PyDoc_STRVAR(copy_doc, "Return a shallow copy of the Queue.");
+PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the Queue.");
+PyDoc_STRVAR(dequeue_doc,
+             "Remove and return an item from the end of the Queue.");
+PyDoc_STRVAR(extend_doc, "Enqueue a sequence of elements from an iterator.");
+
 /**
  * Single ended Contiguous Python Queue
  * --- fastqueue.QueueC ---
@@ -17,10 +24,7 @@ typedef struct {
 } QueueC;
 
 static PyObject* QueueC_is_empty(QueueC* self, PyObject* args) {
-    if (self->length == 0) {
-        Py_RETURN_TRUE;
-    }
-    Py_RETURN_FALSE;
+    return (self->length == 0) ? Py_True : Py_False;
 }
 
 static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
@@ -249,18 +253,12 @@ static PySequenceMethods QueueC_sequence_methods = {
 };
 
 static PyMethodDef QueueC_methods[] = {
-    {"enqueue", (PyCFunction)QueueC_enqueue, METH_O,
-     "Add an object to the front of the QueueC."},
-    {"dequeue", (PyCFunction)QueueC_dequeue, METH_NOARGS,
-     "Remove and return an object from the back of the QueueC."},
-    {"is_empty", (PyCFunction)QueueC_is_empty, METH_NOARGS,
-     "Check if the QueueC is empty."},
-    {"extend", (PyCFunction)QueueC_extend, METH_O,
-     "Add an objects from an iterator front of the QueueC."},
-    {"__copy__", (PyCFunction)QueueC_copy, METH_NOARGS,
-     "Return a shallow copy of the QueueC."},
-    {"copy", (PyCFunction)QueueC_copy, METH_NOARGS,
-     "Return a shallow copy of the QueueC."},
+    {"enqueue", (PyCFunction)QueueC_enqueue, METH_O, enqueue_doc},
+    {"dequeue", (PyCFunction)QueueC_dequeue, METH_NOARGS, dequeue_doc},
+    {"is_empty", (PyCFunction)QueueC_is_empty, METH_NOARGS, is_empty_doc},
+    {"extend", (PyCFunction)QueueC_extend, METH_O, extend_doc},
+    {"__copy__", (PyCFunction)QueueC_copy, METH_NOARGS, copy_doc},
+    {"copy", (PyCFunction)QueueC_copy, METH_NOARGS, copy_doc},
     {NULL, NULL, 0, NULL}};
 
 PyDoc_STRVAR(queuec_doc, "QueueC() -> Contiguous Single ended Queue object.");
@@ -323,12 +321,8 @@ typedef struct Queue {
     Py_ssize_t length; // Total number of py_objects stored in the queue
 } Queue_t;
 
-PyDoc_STRVAR(is_empty_doc, "Returns whether the queue is empty.");
 static PyObject* Queue_is_empty(Queue_t* self, PyObject* args) {
-    if (self->length == 0) {
-        Py_RETURN_TRUE;
-    }
-    Py_RETURN_FALSE;
+    return (self->length == 0) ? Py_True : Py_False;
 }
 
 // Initialize a new QueueNode
@@ -354,7 +348,6 @@ static PyObject* Queue_new(PyTypeObject* type, PyObject* args,
     return (PyObject*)self;
 }
 
-PyDoc_STRVAR(copy_doc, "Return a shallow copy of the Queue.");
 static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
     Queue_t* newQueue = (Queue_t*)Queue_new(Py_TYPE(self), args, NULL);
     if (newQueue == NULL) {
@@ -403,7 +396,6 @@ static inline void QueueNode_put(QueueNode_t* queue_node, PyObject* py_object) {
 }
 
 // Add a py_object to the last QueueNode in the Queue
-PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the Queue.");
 static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
     if (self->tail == NULL) {
         self->head = QueueNode_new();
@@ -424,8 +416,6 @@ static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
 }
 
 // Remove a py_object from the first QueueNode in the Queue
-PyDoc_STRVAR(dequeue_doc,
-             "Remove and return an item from the end of the Queue.");
 static PyObject* Queue_dequeue(Queue_t* self) {
     if (self->length == 0) {
         PyErr_SetString(PyExc_IndexError, "dequeue from an empty Queue");
@@ -500,7 +490,6 @@ static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
     return 0;
 }
 
-PyDoc_STRVAR(extend_doc, "Enqueue a sequence of elements from an iterator.");
 static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
     PyObject* iterable = PyObject_GetIter(iterator);
     if (iterable == NULL) {
