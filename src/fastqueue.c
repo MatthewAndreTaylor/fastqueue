@@ -16,18 +16,18 @@ PyDoc_STRVAR(extend_doc, "Enqueue a sequence of elements from an iterator.");
  * --- fastqueue.QueueC ---
  */
 typedef struct {
-    PyObject_HEAD PyObject** objects;
-    size_t length;
+    PyObject_HEAD size_t length;
     size_t capacity;
     size_t front;
     size_t back;
+    PyObject** objects;
 } QueueC;
 
 static PyObject* QueueC_is_empty(QueueC* self, PyObject* args) {
-    if (self->length == 0) {
-        Py_RETURN_TRUE;
+    if (self->length) {
+        Py_RETURN_FALSE;
     }
-    Py_RETURN_FALSE;
+    Py_RETURN_TRUE;
 }
 
 static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
@@ -89,10 +89,8 @@ static int QueueC_clear(QueueC* self) {
 
     for (size_t i = 0; i < self->length; ++i) {
         size_t index = (self->back + i) % self->capacity;
-        if (self->objects[index] != NULL &&
-            !PyObject_IS_GC(self->objects[index])) {
+        if (!PyObject_IS_GC(self->objects[index])) {
             Py_DECREF(self->objects[index]);
-            self->objects[index] = NULL;
         }
     }
     self->length = 0;
@@ -235,8 +233,7 @@ static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
 static int QueueC_contains(QueueC* self, PyObject* object) {
     for (size_t i = 0; i < self->length; ++i) {
         size_t index = (self->back + i) % self->capacity;
-        if (self->objects[index] != NULL &&
-            PyObject_RichCompareBool(object, self->objects[index], Py_EQ)) {
+        if (PyObject_RichCompareBool(object, self->objects[index], Py_EQ)) {
             return 1;
         }
     }
@@ -306,36 +303,39 @@ static PyTypeObject QueueCType = {
     PyObject_GC_Del,                         /* tp_free */
 };
 
+#define CHUNKLEN 128
+#define CHUNKEND (CHUNKLEN - 1)
+
 /**
  * Single ended Python Queue with subqueue chunks
  * --- fastqueue.QueueC ---
  */
 typedef struct QueueNode {
-    PyObject* py_objects[256];
-    short numEntries; // Number of entries into this node
-    short front;
-    short back;
+    unsigned char numEntries; // Number of entries into this node
+    unsigned char front;
+    unsigned char back;
     struct QueueNode* next;
+    PyObject* py_objects[CHUNKLEN];
 } QueueNode_t;
 
 typedef struct Queue {
     PyObject_HEAD QueueNode_t* head;
     QueueNode_t* tail;
-    Py_ssize_t length; // Total number of py_objects stored in the queue
+    Py_ssize_t length;
 } Queue_t;
 
 static PyObject* Queue_is_empty(Queue_t* self, PyObject* args) {
-    if (self->length == 0) {
-        Py_RETURN_TRUE;
+    if (self->length) {
+        Py_RETURN_FALSE;
     }
-    Py_RETURN_FALSE;
+    Py_RETURN_TRUE;
 }
 
 // Initialize a new QueueNode
 static inline QueueNode_t* QueueNode_new() {
     QueueNode_t* node = (QueueNode_t*)malloc(sizeof(QueueNode_t));
     node->numEntries = 0;
-    node->front = 255;
+    node->front = CHUNKEND;
     node->back = 0;
     node->next = NULL;
     return node;
@@ -348,8 +348,8 @@ static PyObject* Queue_new(PyTypeObject* type, PyObject* args,
         return PyErr_NoMemory();
     }
 
-    self->head = NULL;
-    self->tail = NULL;
+    self->head = QueueNode_new();
+    self->tail = self->head;
     self->length = 0;
     return (PyObject*)self;
 }
@@ -372,8 +372,8 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
             return NULL;
         }
 
-        for (short i = 0; i < current->numEntries; ++i) {
-            short index = (current->back + i) & 255;
+        for (unsigned char i = 0; i < current->numEntries; ++i) {
+            unsigned char index = (current->back + i) & CHUNKEND;
             newNode->py_objects[index] = current->py_objects[index];
             Py_INCREF(current->py_objects[index]);
         }
@@ -395,28 +395,21 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
 
 // Add a py_object to the front of the QueueNode
 static inline void QueueNode_put(QueueNode_t* queue_node, PyObject* py_object) {
-    Py_INCREF(py_object);
-    queue_node->front = (queue_node->front + 1) & 255;
+    queue_node->front = (queue_node->front + 1) & CHUNKEND;
     queue_node->py_objects[queue_node->front] = py_object;
     queue_node->numEntries++;
 }
 
 // Add a py_object to the last QueueNode in the Queue
-static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
-    if (self->tail == NULL) {
-        self->head = QueueNode_new();
-        self->tail = self->head;
-    } else {
-        if (self->tail->numEntries >= 256) {
-            if (self->tail->next == NULL) {
-                QueueNode_t* node = QueueNode_new();
-                self->tail->next = node;
-                self->tail = node;
-            }
-        }
+static PyObject* Queue_enqueue(Queue_t* self, PyObject* py_object) {
+    if (self->tail->numEntries == CHUNKLEN) {
+        QueueNode_t* node = QueueNode_new();
+        self->tail->next = node;
+        self->tail = node;
     }
 
-    QueueNode_put(self->tail, object);
+    Py_INCREF(py_object);
+    QueueNode_put(self->tail, py_object);
     self->length++;
     Py_RETURN_NONE;
 }
@@ -430,17 +423,12 @@ static PyObject* Queue_dequeue(Queue_t* self) {
 
     QueueNode_t* head = self->head;
     PyObject* py_object = head->py_objects[head->back];
-    head->back = (head->back + 1) & 255;
+    head->back = (head->back + 1) & CHUNKEND;
     head->numEntries--;
     self->length--;
 
-    if (head->numEntries <= 0) {
+    if (head->numEntries <= 0 && head->next != NULL) {
         self->head = head->next;
-        free(head);
-    }
-
-    if (self->head == NULL) {
-        self->tail = NULL;
     }
 
     return py_object;
@@ -454,12 +442,10 @@ static int Queue_clear(Queue_t* self) {
     QueueNode_t* current = self->head;
     QueueNode_t* next;
     while (current != NULL) {
-        for (short i = 0; i < current->numEntries; ++i) {
-            short index = (current->back + i) & 255;
-            if (current->py_objects[index] != NULL &&
-                !PyObject_IS_GC(current->py_objects[index])) {
+        for (unsigned char i = 0; i < current->numEntries; ++i) {
+            unsigned char index = (current->back + i) & CHUNKEND;
+            if (!PyObject_IS_GC(current->py_objects[index])) {
                 Py_DECREF(current->py_objects[index]);
-                current->py_objects[index] = NULL;
             }
         }
         next = current->next;
@@ -478,17 +464,15 @@ static void Queue_dealloc(Queue_t* self) {
         return;
     }
     PyObject_GC_UnTrack(self);
-    if (self->head != NULL) {
-        Queue_clear(self);
-    }
+    Queue_clear(self);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        for (short i = 0; i < current->numEntries; ++i) {
-            short index = (current->back + i) & 255;
+        for (unsigned char i = 0; i < current->numEntries; ++i) {
+            unsigned char index = (current->back + i) & CHUNKEND;
             Py_VISIT(current->py_objects[index]);
         }
         current = current->next;
@@ -545,10 +529,10 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
     }
 
     QueueNode_t* current = self->head;
-    for (size_t i = 0; i < (size_t)(index / 256); ++i) {
+    for (size_t i = 0; i < (size_t)(index / CHUNKLEN); ++i) {
         current = current->next;
     }
-    PyObject* object = current->py_objects[(current->back + index) & 255];
+    PyObject* object = current->py_objects[(current->back + index) & CHUNKEND];
     Py_INCREF(object);
     return object;
 }
@@ -564,22 +548,23 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
     }
 
     QueueNode_t* current = self->head;
-    for (size_t i = 0; i < (size_t)(index / 256); ++i) {
+    for (size_t i = 0; i < (size_t)(index / CHUNKLEN); ++i) {
         current = current->next;
     }
-    PyObject* oldObject = current->py_objects[(current->back + index) & 255];
+    PyObject* oldObject =
+        current->py_objects[(current->back + index) & CHUNKEND];
     Py_DECREF(oldObject);
     Py_INCREF(object);
-    current->py_objects[(current->back + index) & 255] = object;
+    current->py_objects[(current->back + index) & CHUNKEND] = object;
     return 0;
 }
 
 static int Queue_contains(Queue_t* self, PyObject* object) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        for (short i = 0; i < current->numEntries; ++i) {
+        for (unsigned char i = 0; i < current->numEntries; ++i) {
             if (PyObject_RichCompareBool(
-                    object, current->py_objects[(current->back + i) & 255],
+                    object, current->py_objects[(current->back + i) & CHUNKEND],
                     Py_EQ)) {
                 return 1;
             }
@@ -735,7 +720,7 @@ static PyObject* LockQueue_item(LockQueue_t* self, Py_ssize_t index) {
 
 static Py_ssize_t LockQueue_len(LockQueue_t* self) {
     PyThread_acquire_lock(self->lock, 1);
-    Py_ssize_t res = (Py_ssize_t)self->queue->length;
+    Py_ssize_t res = self->queue->length;
     PyThread_release_lock(self->lock);
     return res;
 }
@@ -830,17 +815,17 @@ static PyTypeObject LockQueueType = {
     PyObject_GC_Del,                            /* tp_free */
 };
 
-static PyModuleDef QueueModuleDef = {
-    PyModuleDef_HEAD_INIT,
-    "_fastqueue",
-    "Singly linked, small overhead implementations of the Queue data "
-    "structure.",
-    -1,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL};
+PyDoc_STRVAR(fastqueue_doc,
+             "Single ended fast queue's built in C tuned for python.");
+static PyModuleDef QueueModuleDef = {PyModuleDef_HEAD_INIT,
+                                     "_fastqueue",
+                                     fastqueue_doc,
+                                     -1,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     NULL,
+                                     NULL};
 
 PyMODINIT_FUNC PyInit__fastqueue(void) {
     PyObject* module;
