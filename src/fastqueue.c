@@ -4,6 +4,9 @@
 #include <Python.h>
 #include <pythread.h>
 
+#define CHUNKLEN 128
+#define CHUNKEND (CHUNKLEN - 1)
+
 PyDoc_STRVAR(is_empty_doc, "Returns whether the Queue is empty.");
 PyDoc_STRVAR(copy_doc, "Return a shallow copy of the Queue.");
 PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the Queue.");
@@ -37,7 +40,7 @@ static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
         return PyErr_NoMemory();
     }
 
-    self->objects = (PyObject**)malloc(1024 * sizeof(PyObject*));
+    self->objects = (PyObject**)malloc(CHUNKLEN * sizeof(PyObject*));
     if (self->objects == NULL) {
         Py_DECREF(self);
         return PyErr_NoMemory();
@@ -45,8 +48,8 @@ static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
 
     self->length = 0;
     self->back = 0;
-    self->capacity = 1024;
-    self->front = 1023;
+    self->capacity = CHUNKLEN;
+    self->front = CHUNKEND;
     return (PyObject*)self;
 }
 
@@ -155,7 +158,6 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
         return NULL;
     }
 
-    PyObject* py_object;
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
 
@@ -166,15 +168,14 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
             QueueC_resize(self, (self->capacity + len) * 2);
         }
 
-        while ((py_object = next(iterable)) != NULL) {
-            Py_INCREF(py_object);
-            self->front = (self->front + 1) % self->capacity;
-            self->objects[self->front] = py_object;
-            self->length++;
+        for (size_t i = 1; i <= len; ++i) {
+            self->objects[(self->front + i) % self->capacity] = next(iterable);
         }
+        self->front = (self->front + len) % self->capacity;
+        self->length += len;
     } else {
-        while ((py_object = next(iterable)) != NULL) {
-            QueueC_enqueue(self, py_object);
+        for (size_t i = 0; i < len; ++i) {
+            QueueC_enqueue(self, next(iterable));
         }
     }
 
@@ -302,9 +303,6 @@ static PyTypeObject QueueCType = {
     QueueC_new,                              /* tp_new */
     PyObject_GC_Del,                         /* tp_free */
 };
-
-#define CHUNKLEN 128
-#define CHUNKEND (CHUNKLEN - 1)
 
 /**
  * Single ended Python Queue with subqueue chunks
@@ -491,8 +489,20 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
     PyObject* py_object;
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
-    while ((py_object = next(iterable)) != NULL) {
-        Queue_enqueue(self, py_object);
+
+    Py_ssize_t len = PyObject_Size(iterator);
+    Py_ssize_t fill = CHUNKLEN - self->tail->numEntries;
+
+    if (len < fill) {
+        for (Py_ssize_t i = 0; i < len; ++i) {
+            QueueNode_put(self->tail, next(iterable));
+        }
+        self->length += len;
+    } else {
+        // TODO: make larger contiguous allocations of QueueNodes
+        while ((py_object = next(iterable)) != NULL) {
+            Queue_enqueue(self, py_object);
+        }
     }
     Py_DECREF(iterable);
     Py_RETURN_NONE;

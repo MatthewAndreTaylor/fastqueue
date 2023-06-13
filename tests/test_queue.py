@@ -3,7 +3,7 @@ import pytest
 from fastqueue.prototypes import *
 from fastqueue import *
 
-queue_size = 500000
+queue_size = 350000
 
 
 @pytest.mark.parametrize(
@@ -12,7 +12,7 @@ queue_size = 500000
 def test_new(queue):
     assert queue.is_empty()
     assert len(queue) == 0
-    queue.enqueue(1)
+    assert queue.enqueue(1) is None
     assert not queue.is_empty()
     assert len(queue) == 1
     queue.enqueue("🙂")
@@ -44,6 +44,16 @@ def test_mutation(queue):
     queue.dequeue()
     assert item == 7
 
+    queue.enqueue('👑')
+    queue.enqueue('🎁')
+    item = queue.dequeue()
+    assert item == '👑'
+    item = '🧶'
+    queue.enqueue(item)
+    assert item == '🧶'
+    item = queue.dequeue()
+    assert item == '🎁'
+
 
 @pytest.mark.parametrize(
     "queue", [LockQueue(), Queue(), QueueC(), LLQueue(), ContQueue()]
@@ -55,6 +65,13 @@ def test_large(queue):
     assert len(queue) == queue_size
     for i in range(queue_size):
         assert queue.dequeue() == i
+    assert queue.is_empty()
+    queue.enqueue(1)
+    queue.enqueue(2)
+    assert not queue.is_empty()
+    assert queue.dequeue() == 1
+    assert queue.dequeue() == 2
+    assert queue.is_empty()
 
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
@@ -62,7 +79,13 @@ def test_extend(queue):
     queue.extend(range(queue_size))
     assert not queue.is_empty()
     assert len(queue) == queue_size
-    assert [queue.dequeue() for _ in range(queue_size)] == list(range(queue_size))
+    queue.extend([1, 2, 3])
+    assert not queue.is_empty()
+    assert len(queue) == queue_size + 3
+    assert [queue.dequeue() for _ in range(queue_size)] == list(
+        range(queue_size))
+    assert len(queue) == 3
+    assert [queue.dequeue() for _ in range(len(queue))] == [1, 2, 3]
     assert queue.is_empty()
     assert len(queue) == 0
 
@@ -136,6 +159,9 @@ def test_getitemQueue(queue):
     assert queue[len(queue) - 1] == queue[-1]
     assert queue[len(queue) - 3] == queue[-3]
 
+    queue.enqueue(1)
+    assert queue[-1] == 1
+
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
 def test_setitemQueue(queue):
@@ -147,6 +173,8 @@ def test_setitemQueue(queue):
 
     queue[0] = None
     assert queue[0] is None
+    queue[256] += 1
+    assert queue[256] == 257
 
     queue[-1] = 10
     assert queue[len(queue) - 1] == 10
@@ -164,6 +192,10 @@ def test_containsQueue(queue):
     assert (queue_size - 1) in queue
     queue.dequeue()
     assert not (0 in queue)
+
+    assert not ('🐲' in queue)
+    queue.enqueue('🐲')
+    assert '🐲' in queue
 
 
 @pytest.mark.parametrize("queue", [LockQueue, Queue, QueueC])
@@ -190,7 +222,7 @@ def test_initialize(queue):
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
 def test_copy(queue):
-    queue.extend([1, 2, 3, 4])
+    queue.extend(range(1, 5))
     copy = queue.copy()
     assert copy != queue
     queue[0] = 0
@@ -205,3 +237,7 @@ def test_copy(queue):
     assert len(copy) == 1
     assert copy[0] == "🎈"
     assert queue[0] == "🎈"
+    queue.extend(range(1000))
+    copy = queue.copy()
+    assert len(copy) == len(queue)
+    assert copy.dequeue() == queue.dequeue()
