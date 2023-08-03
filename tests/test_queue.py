@@ -141,6 +141,11 @@ def test_mixed_extend(queue):
     assert queue.is_empty()
     assert len(queue) == 0
 
+    queue.extend(range(10))
+    assert len(queue) == 10
+    assert queue[0] == 0
+    assert queue[-1] == 9
+
 
 @pytest.mark.parametrize("queue", [LockQueue(), Queue(), QueueC()])
 def test_getitemQueue(queue):

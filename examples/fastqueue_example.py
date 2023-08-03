@@ -122,7 +122,7 @@ def execute_profiles(seed, profiles, num_trials):
     ax.set_xlabel("Number of operations")
     ax.set_ylabel("Time (microseconds)")
 
-    grouped = df.groupby(["module", "queue_type", "queue_op"])
+    grouped = df.groupby(["queue_type", "queue_op"])
     for name, group in grouped:
         means = group.groupby("size")["time"].mean()
         ax.plot(means, label=name)

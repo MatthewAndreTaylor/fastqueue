@@ -309,9 +309,9 @@ static PyTypeObject QueueCType = {
  * --- fastqueue.QueueC ---
  */
 typedef struct QueueNode {
-    unsigned char numEntries; // Number of entries into this node
-    unsigned char front;
-    unsigned char back;
+    uint16_t numEntries; // Number of entries into the current node
+    uint16_t front;
+    uint16_t back;
     struct QueueNode* next;
     PyObject* py_objects[CHUNKLEN];
 } QueueNode_t;
@@ -370,8 +370,8 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
             return NULL;
         }
 
-        for (unsigned char i = 0; i < current->numEntries; ++i) {
-            unsigned char index = (current->back + i) & CHUNKEND;
+        for (uint16_t i = 0; i < current->numEntries; ++i) {
+            uint16_t index = (current->back + i) & CHUNKEND;
             newNode->py_objects[index] = current->py_objects[index];
             Py_INCREF(current->py_objects[index]);
         }
@@ -427,6 +427,7 @@ static PyObject* Queue_dequeue(Queue_t* self) {
 
     if (head->numEntries <= 0 && head->next != NULL) {
         self->head = head->next;
+        free(head);
     }
 
     return py_object;
@@ -440,8 +441,8 @@ static int Queue_clear(Queue_t* self) {
     QueueNode_t* current = self->head;
     QueueNode_t* next;
     while (current != NULL) {
-        for (unsigned char i = 0; i < current->numEntries; ++i) {
-            unsigned char index = (current->back + i) & CHUNKEND;
+        for (uint16_t i = 0; i < current->numEntries; ++i) {
+            uint16_t index = (current->back + i) & CHUNKEND;
             if (!PyObject_IS_GC(current->py_objects[index])) {
                 Py_DECREF(current->py_objects[index]);
             }
@@ -469,8 +470,8 @@ static void Queue_dealloc(Queue_t* self) {
 static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        for (unsigned char i = 0; i < current->numEntries; ++i) {
-            unsigned char index = (current->back + i) & CHUNKEND;
+        for (uint16_t i = 0; i < current->numEntries; ++i) {
+            uint16_t index = (current->back + i) & CHUNKEND;
             Py_VISIT(current->py_objects[index]);
         }
         current = current->next;
@@ -572,7 +573,7 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
 static int Queue_contains(Queue_t* self, PyObject* object) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        for (unsigned char i = 0; i < current->numEntries; ++i) {
+        for (uint16_t i = 0; i < current->numEntries; ++i) {
             if (PyObject_RichCompareBool(
                     object, current->py_objects[(current->back + i) & CHUNKEND],
                     Py_EQ)) {
