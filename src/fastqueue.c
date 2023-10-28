@@ -487,24 +487,19 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
         return NULL;
     }
 
-    PyObject* py_object;
     PyObject* (*next)(PyObject*);
     next = *Py_TYPE(iterable)->tp_iternext;
 
     Py_ssize_t len = PyObject_Size(iterator);
-    Py_ssize_t fill = CHUNKLEN - self->tail->numEntries;
-
-    if (len < fill) {
-        for (Py_ssize_t i = 0; i < len; ++i) {
-            QueueNode_put(self->tail, next(iterable));
+    for (Py_ssize_t i = 0; i < len; ++i) {
+        if (self->tail->numEntries == CHUNKLEN) {
+            QueueNode_t* node = QueueNode_new();
+            self->tail->next = node;
+            self->tail = node;
         }
-        self->length += len;
-    } else {
-        // TODO: make larger contiguous allocations of QueueNodes
-        while ((py_object = next(iterable)) != NULL) {
-            Queue_enqueue(self, py_object);
-        }
+        QueueNode_put(self->tail, next(iterable));
     }
+    self->length += len;
     Py_DECREF(iterable);
     Py_RETURN_NONE;
 }
@@ -531,7 +526,7 @@ static Py_ssize_t Queue_len(Queue_t* self) { return self->length; }
 
 static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
     if (index < 0) {
-        index = index + self->length;
+        index += self->length;
     }
 
     if (index >= self->length) {
@@ -540,7 +535,7 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
     }
 
     QueueNode_t* current = self->head;
-    for (size_t i = 0; i < (size_t)(index / CHUNKLEN); ++i) {
+    for (Py_ssize_t i = 0; i < (Py_ssize_t)(index / CHUNKLEN); ++i) {
         current = current->next;
     }
     PyObject* object = current->py_objects[(current->back + index) & CHUNKEND];
@@ -550,7 +545,7 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
 
 static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
     if (index < 0) {
-        index = index + Queue_len(self);
+        index += self->length;
     }
 
     if (index >= self->length) {
@@ -559,7 +554,7 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
     }
 
     QueueNode_t* current = self->head;
-    for (size_t i = 0; i < (size_t)(index / CHUNKLEN); ++i) {
+    for (Py_ssize_t i = 0; i < (Py_ssize_t)(index / CHUNKLEN); ++i) {
         current = current->next;
     }
     PyObject* oldObject =
