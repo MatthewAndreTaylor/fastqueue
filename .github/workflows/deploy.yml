@@ -26,6 +26,7 @@ jobs:
 
       - name: Build the site
         run: |
+          cd docs
           sphinx-build -M html . ./build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
