@@ -28,6 +28,7 @@ jobs:
         run: |
           cd docs
           sphinx-build -M html . ./build
+          cd ..
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -35,7 +36,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     permissions:
       pages: write
       id-token: write
