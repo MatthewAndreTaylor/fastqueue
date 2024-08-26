@@ -2,6 +2,10 @@ from typing import Any, Iterable, Optional
 
 
 class Queue:
+    """
+    A Queue class that implements a FIFO data structure.
+    This queue is made up of a linked list of nodes, each containing a queue.
+    """
 
     def __init__(self, iterable: Optional[Iterable] = None) -> None:
         """Initialize the Queue object.
@@ -71,6 +75,11 @@ class Queue:
 
 
 class QueueC:
+    """
+    A Queue class that implements a FIFO data structure.
+    This queue is made up a single contiguous container.
+    """
+
     def __init__(self, iterable: Optional[Iterable] = None) -> None:
         """Initialize the Queue object.
 
@@ -139,6 +148,10 @@ class QueueC:
 
 
 class LockQueue(Queue):
+    """
+    A Queue class that implements a FIFO data structure with locking.
+    """
+
     def __init__(self, iterable: Optional[Iterable] = None) -> None:
         """Initialize the LockQueue object.
 
