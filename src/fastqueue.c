@@ -76,11 +76,14 @@ static PyObject* QueueC_copy(QueueC* self, PyObject* args) {
     return (PyObject*)copy;
 }
 
+static int QueueC_clear(QueueC* self);
+
 static void QueueC_dealloc(QueueC* self) {
     if (self == NULL) {
         return;
     }
     PyObject_GC_UnTrack(self);
+    QueueC_clear(self);
     free(self->objects);
     Py_TYPE(self)->tp_free(self);
 }
@@ -90,11 +93,12 @@ static int QueueC_clear(QueueC* self) {
         return 0;
     }
 
-    for (size_t i = 0; i < self->length; ++i) {
-        size_t index = (self->back + i) % self->capacity;
-        if (!PyObject_IS_GC(self->objects[index])) {
-            Py_DECREF(self->objects[index]);
-        }
+    // Remove each owned reference before invoking its possible finalizer.
+    while (self->length != 0) {
+        PyObject* object = self->objects[self->back];
+        self->back = (self->back + 1) % self->capacity;
+        --self->length;
+        Py_DECREF(object);
     }
     self->length = 0;
     self->front = self->capacity - 1;
@@ -175,7 +179,14 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
         self->length += len;
     } else {
         for (size_t i = 0; i < len; ++i) {
-            QueueC_enqueue(self, next(iterable));
+            PyObject* object = next(iterable);
+            PyObject* result = QueueC_enqueue(self, object);
+            Py_DECREF(object);
+            if (result == NULL) {
+                Py_DECREF(iterable);
+                return NULL;
+            }
+            Py_DECREF(result);
         }
     }
 
@@ -358,6 +369,7 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
         return PyErr_NoMemory();
     }
 
+    free(newQueue->head);
     newQueue->head = NULL;
     newQueue->tail = NULL;
     newQueue->length = self->length;
@@ -434,26 +446,11 @@ static PyObject* Queue_dequeue(Queue_t* self) {
 }
 
 static int Queue_clear(Queue_t* self) {
-    if (self->length == 0) {
-        return 0;
+    // Keep the final empty node for reuse; dealloc releases that node.
+    while (self->length != 0) {
+        PyObject* object = Queue_dequeue(self);
+        Py_DECREF(object);
     }
-
-    QueueNode_t* current = self->head;
-    QueueNode_t* next;
-    while (current != NULL) {
-        for (Py_ssize_t i = 0; i < current->numEntries; ++i) {
-            Py_ssize_t index = (current->back + i) & CHUNKEND;
-            if (!PyObject_IS_GC(current->py_objects[index])) {
-                Py_DECREF(current->py_objects[index]);
-            }
-        }
-        next = current->next;
-        free(current);
-        current = next;
-    }
-    self->length = 0;
-    self->head = NULL;
-    self->tail = NULL;
     return 0;
 }
 
@@ -464,6 +461,7 @@ static void Queue_dealloc(Queue_t* self) {
     }
     PyObject_GC_UnTrack(self);
     Queue_clear(self);
+    free(self->head);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
@@ -656,13 +654,19 @@ static PyObject* LockQueue_new(PyTypeObject* type, PyObject* args,
     }
 
     self->queue = (Queue_t*)Queue_new(&QueueType, args, kwargs);
+    if (self->queue == NULL) {
+        Py_DECREF(self);
+        return NULL;
+    }
     self->lock = NULL;
     return (PyObject*)self;
 }
 
 static int LockQueue_init(LockQueue_t* self, PyObject* args, PyObject* kwargs) {
-    self->lock = PyThread_allocate_lock();
-    if (self == NULL) {
+    if (self->lock == NULL) {
+        self->lock = PyThread_allocate_lock();
+    }
+    if (self->lock == NULL) {
         PyErr_SetString(PyExc_MemoryError, "Could not allocate thread lock.");
         return -1;
     }
@@ -670,19 +674,22 @@ static int LockQueue_init(LockQueue_t* self, PyObject* args, PyObject* kwargs) {
 }
 
 static void LockQueue_dealloc(LockQueue_t* self) {
-    PyThread_free_lock(self->lock);
+    PyObject_GC_UnTrack(self);
+    Py_CLEAR(self->queue);
+    if (self->lock != NULL) {
+        PyThread_free_lock(self->lock);
+    }
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
 static int LockQueue_traverse(LockQueue_t* self, visitproc visit, void* arg) {
-    return Queue_traverse(self->queue, visit, arg);
+    Py_VISIT(self->queue);
+    return 0;
 }
 
 static int LockQueue_clear(LockQueue_t* self) {
-    PyThread_acquire_lock(self->lock, 1);
-    int res = Queue_clear(self->queue);
-    PyThread_release_lock(self->lock);
-    return res;
+    // GC clearing can run element finalizers that reenter the wrapper.
+    return self->queue == NULL ? 0 : Queue_clear(self->queue);
 }
 
 static PyObject* LockQueue_call_with_lock(LockQueue_t* self, PyObject* args,
