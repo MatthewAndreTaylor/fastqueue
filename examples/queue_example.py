@@ -1,18 +1,19 @@
 import queue
 import sys
 import time
+from collections import deque
 import matplotlib.pyplot as plt
 from fastqueue.prototypes import *
 from fastqueue import *
 
-queue_size = 1000000
+queue_size = 5000000
 queue_structures = {
-    "Python queue": (queue.Queue(), queue.Queue.put, queue.Queue.get),
     "Python Simple queue": (
         queue.SimpleQueue(),
         queue.SimpleQueue.put,
         queue.SimpleQueue.get,
     ),
+    "Python deque": (deque(), deque.append, deque.popleft),
     "Matt's Linked List queue": (LLQueue(), LLQueue.enqueue, LLQueue.dequeue),
     "Matt's Contiguous queue": (ContQueue(), ContQueue.enqueue, ContQueue.dequeue),
     "Matt's C queue": (Queue(), Queue.enqueue, Queue.dequeue),

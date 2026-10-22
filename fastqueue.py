@@ -35,13 +35,6 @@ class Queue:
     def __len__(self) -> int:
         pass
 
-    def is_empty(self) -> bool:
-        """Returns whether the Queue is empty.
-
-        :return: True if the Queue is empty, False otherwise.
-        """
-        pass
-
     def __getitem__(self, index: int):
         pass
 
@@ -103,13 +96,6 @@ class Queue:
     def __len__(self) -> int:
         pass
 
-    def is_empty(self) -> bool:
-        """Returns whether the Queue is empty.
-
-        :return: True if the Queue is empty, False otherwise.
-        """
-        pass
-
     def __getitem__(self, index: int):
         pass
 
@@ -130,15 +116,5 @@ class Queue:
         """Return a shallow copy of the Queue.
 
         :return: A shallow copy of the Queue object.
-        """
-        pass
-
-
-class LockQueue(Queue):
-    def get(self):
-        """Return the first element of the LockQueue, None if no element exists.
-
-        :return: The first element of the LockQueue, or None if the LockQueue
-        is empty.
         """
         pass

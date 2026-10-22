@@ -125,7 +125,7 @@ def execute_profiles(seed, profiles, num_trials):
     grouped = df.groupby(["queue_type", "queue_op"])
     for name, group in grouped:
         means = group.groupby("size")["time"].mean()
-        ax.plot(means, label=name)
+        ax.plot(means, label=".".join(name))
     ax.legend()
     plt.show()
 

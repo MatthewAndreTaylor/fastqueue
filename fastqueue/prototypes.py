@@ -27,19 +27,20 @@ class LLNodeQueue(Structure):
 
 
 __libfile = Path(__file__).parent / "cllqueue.so"
-llqueue_lib = CDLL(str(__libfile))
+# Native calls own Python references and must keep the GIL.
+llqueue_lib = PyDLL(str(__libfile))
 
 llqueue_lib.new_node_queue.argtypes = []
 llqueue_lib.new_node_queue.restype = POINTER(LLNodeQueue)
-
-llqueue_lib.is_empty.argtypes = [POINTER(LLNodeQueue)]
-llqueue_lib.is_empty.restype = c_bool
 
 llqueue_lib.enqueue.argtypes = [POINTER(LLNodeQueue), py_object]
 llqueue_lib.enqueue.restype = None
 
 llqueue_lib.dequeue.argtypes = [POINTER(LLNodeQueue)]
 llqueue_lib.dequeue.restype = py_object
+
+llqueue_lib.clear_q.argtypes = [POINTER(LLNodeQueue)]
+llqueue_lib.clear_q.restype = None
 
 llqueue_lib.free_q.argtypes = [POINTER(LLNodeQueue)]
 llqueue_lib.free_q.restype = None
@@ -52,9 +53,6 @@ class LLQueue:
     def __init__(self):
         self.queue = llqueue_lib.new_node_queue()
 
-    def is_empty(self) -> bool:
-        return llqueue_lib.is_empty(self.queue)
-
     def __len__(self) -> int:
         return self.queue.contents.length
 
@@ -62,43 +60,42 @@ class LLQueue:
         llqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:
-        if self.is_empty():
-            raise IndexError
         return llqueue_lib.dequeue(self.queue)
 
     def clear(self):
-        llqueue_lib.free_q(self.queue)
-        self.queue = llqueue_lib.new__queue()
+        llqueue_lib.clear_q(self.queue)
 
     def __del__(self):
-        llqueue_lib.free_q(self.queue)
+        queue = getattr(self, "queue", None)
+        self.queue = None
+        llqueue_lib.free_q(queue)
 
 
 # Matt's Contiguous Queue
 class ContiguousQueue(Structure):
     _fields_ = [
         ("objects", POINTER(py_object)),
-        ("length", c_int),
-        ("capacity", c_int),
-        ("front", c_int),
-        ("back", c_int),
+        ("length", c_size_t),
+        ("capacity", c_size_t),
+        ("front", c_size_t),
+        ("back", c_size_t),
     ]
 
 
 __libfile = Path(__file__).parent / "ccqueue.so"
-cqueue_lib = CDLL(str(__libfile))
+cqueue_lib = PyDLL(str(__libfile))
 
 cqueue_lib.new__queue.argtypes = []
 cqueue_lib.new__queue.restype = POINTER(ContiguousQueue)
-
-cqueue_lib.is_empty.argtypes = [POINTER(ContiguousQueue)]
-cqueue_lib.is_empty.restype = c_bool
 
 cqueue_lib.enqueue.argtypes = [POINTER(ContiguousQueue), py_object]
 cqueue_lib.enqueue.restype = None
 
 cqueue_lib.dequeue.argtypes = [POINTER(ContiguousQueue)]
 cqueue_lib.dequeue.restype = py_object
+
+cqueue_lib.clear_q.argtypes = [POINTER(ContiguousQueue)]
+cqueue_lib.clear_q.restype = None
 
 cqueue_lib.free_q.argtypes = [POINTER(ContiguousQueue)]
 cqueue_lib.free_q.restype = None
@@ -111,9 +108,6 @@ class ContQueue:
     def __init__(self):
         self.queue = cqueue_lib.new__queue()
 
-    def is_empty(self) -> bool:
-        return cqueue_lib.is_empty(self.queue)
-
     def __len__(self) -> int:
         return self.queue.contents.length
 
@@ -121,13 +115,12 @@ class ContQueue:
         cqueue_lib.enqueue(self.queue, item)
 
     def dequeue(self) -> Any:
-        if self.is_empty():
-            raise IndexError
         return cqueue_lib.dequeue(self.queue)
 
     def clear(self):
-        cqueue_lib.free_q(self.queue)
-        self.queue = cqueue_lib.new__queue()
+        cqueue_lib.clear_q(self.queue)
 
     def __del__(self):
-        cqueue_lib.free_q(self.queue)
+        queue = getattr(self, "queue", None)
+        self.queue = None
+        cqueue_lib.free_q(queue)
