@@ -1,6 +1,7 @@
 import gc
 import sys
 import weakref
+from collections import deque
 
 import pytest
 
@@ -76,6 +77,76 @@ def test_large(queue):
     assert queue.dequeue() == 1
     assert queue.dequeue() == 2
     assert not queue
+
+
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
+@pytest.mark.parametrize("size", [0, 1, 255, 256, 257, 383, 384, 385, 1024, 3075])
+def test_single_item_wraparound_matches_deque(queue_type, size):
+    expected = deque(object() for _ in range(size))
+    queue = queue_type()
+    for value in expected:
+        queue.enqueue(value)
+
+    steps = 2 * (size + 1024)
+    checkpoints = {0, 255, 256, 1023, 1024, 3074, 3075, steps - 1}
+    for step in range(steps):
+        value = object()
+        queue.enqueue(value)
+        expected.append(value)
+        assert queue.dequeue() is expected.popleft()
+        assert len(queue) == size
+
+        if step in checkpoints:
+            assert list(queue) == list(expected)
+            copied = queue.copy()
+            assert len(copied) == size
+            assert list(copied) == list(expected)
+            for index in (0, 255, 256, 1023, size - 1):
+                if 0 <= index < size:
+                    assert queue[index] is expected[index]
+                    assert queue[index - size] is expected[index]
+            if expected:
+                assert copied.dequeue() is expected[0]
+                assert len(queue) == size
+                assert queue[0] is expected[0]
+
+    while expected:
+        assert queue.dequeue() is expected.popleft()
+    assert len(queue) == 0
+    with pytest.raises(IndexError):
+        queue.dequeue()
+
+
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
+def test_extend_drain_and_reuse_matches_deque(queue_type):
+    queue = queue_type()
+    expected = deque()
+    # Exercise reservations from non-power-of-two input lengths.
+    phases = [(2051, 2000), (949, 900), (200, 300), (257, 256), (1024, 1025)]
+    for cycle in range(3):
+        for added, removed in phases:
+            values = [object() for _ in range(added)]
+            items = values if cycle == 0 else tuple(values)
+            if cycle == 2:
+                items = (value for value in values)
+            queue.extend(items)
+            expected.extend(values)
+            assert len(queue) == len(expected)
+            assert list(queue.copy()) == list(expected)
+
+            for _ in range(removed):
+                assert queue.dequeue() is expected.popleft()
+            assert len(queue) == len(expected)
+            assert list(queue) == list(expected)
+            if expected:
+                assert queue[0] is expected[0]
+                assert queue[-1] is expected[-1]
+        assert not queue
+        queue.extend([])
+        marker = object()
+        queue.enqueue(marker)
+        assert queue.dequeue() is marker
+        assert not queue
 
 
 @pytest.mark.parametrize("queue", [Queue(), QueueC()])
@@ -196,8 +267,8 @@ def test_contiguous_extend_boundaries(initial, removed, added, input_type):
     assert not queue
 
 
-def test_contiguous_extend_non_power_of_two_capacity():
-    # A 2051-item extension reserves 3075 slots, including room for more items.
+def test_contiguous_extend_grows_wrapped_buffer():
+    # A 2051-item extension rounds its reservation up to 4096 slots.
     queue = QueueC(range(2051))
     for value in range(2000):
         assert queue.dequeue() == value
@@ -205,14 +276,14 @@ def test_contiguous_extend_non_power_of_two_capacity():
     for value in range(2000, 2900):
         assert queue.dequeue() == value
 
-    # Cross the retained buffer's end, then grow past its 3075-slot capacity.
-    queue.extend(value for value in range(3000, 3200))
-    assert list(queue) == list(range(2900, 3200))
-    queue.extend(list(range(3200, 5976)))
-    assert list(queue) == list(range(2900, 5976))
+    # Wrap inside that buffer, then request more than its 4096-slot capacity.
+    queue.extend(value for value in range(3000, 4200))
+    assert list(queue) == list(range(2900, 4200))
+    queue.extend(list(range(4200, 7000)))
+    assert list(queue) == list(range(2900, 7000))
     queue.enqueue("tail")
     assert [queue.dequeue() for _ in range(len(queue))] == (
-        list(range(2900, 5976)) + ["tail"]
+        list(range(2900, 7000)) + ["tail"]
     )
     assert not queue
 
@@ -433,6 +504,45 @@ def test_copy_after_node_reuse(initial, removed, added):
     assert [queue.dequeue() for _ in range(1025)] == list(range(1025))
 
 
+@pytest.mark.parametrize("removed", [1, 191, 383])
+@pytest.mark.parametrize("bulk", [False, True])
+def test_wrapped_single_node_grows_into_multiple_nodes(removed, bulk):
+    chunklen = 384
+    queue = Queue(range(chunklen))
+    for value in range(removed):
+        assert queue.dequeue() == value
+    queue.extend(range(chunklen, chunklen + removed))
+    expected = list(range(removed, chunklen + removed))
+    assert list(queue.copy()) == expected
+
+    values = range(chunklen + removed, 2 * chunklen + removed + 1)
+    if bulk:
+        queue.extend(iter(values))
+    else:
+        for value in values:
+            queue.enqueue(value)
+    expected.extend(values)
+    assert list(queue) == expected
+    assert list(queue.copy()) == expected
+    for index in (0, chunklen - removed, chunklen, len(expected) - 1):
+        assert queue[index] == expected[index]
+        assert queue[index - len(expected)] == expected[index]
+        assert expected[index] in queue
+        queue[index] = -expected[index] - 1
+        expected[index] = -expected[index] - 1
+    assert list(queue) == expected
+    assert None not in queue
+
+    payload = MembershipPayload()
+    payload.queue = queue
+    queue[0] = payload
+    queue[-1] = payload
+    reference = weakref.ref(payload)
+    del payload, queue
+    gc.collect()
+    assert reference() is None
+
+
 @pytest.mark.parametrize("queue_type", [Queue, QueueC])
 @pytest.mark.parametrize(
     "initial, removed, added",
@@ -541,3 +651,49 @@ def test_copy(queue):
     copy = queue.copy()
     assert len(copy) == len(queue)
     assert copy.dequeue() == queue.dequeue()
+
+
+class MembershipPayload:
+    pass
+
+
+@pytest.mark.parametrize(
+    'queue_type, size',
+    [(QueueC, 256), (QueueC, 600)],
+)
+@pytest.mark.parametrize('consumed', [0, 255, 256, 513])
+@pytest.mark.parametrize('refill', [False, True])
+def test_contains_detects_drain_and_same_length_refill(queue_type, consumed, refill, size):
+    queue = queue_type(MembershipPayload() for _ in range(consumed + size))
+    for _ in range(consumed):
+        queue.dequeue()
+    references = tuple(weakref.ref(item) for item in queue)
+
+    class Probe:
+        def __eq__(self, other):
+            while queue:
+                queue.dequeue()
+            if refill:
+                queue.extend(MembershipPayload() for _ in range(size))
+            return False
+
+    with pytest.raises(RuntimeError, match='mutated'):
+        Probe() in queue
+    assert len(queue) == (size if refill else 0)
+    assert all(reference() is None for reference in references)
+
+
+@pytest.mark.parametrize('queue_type', [Queue, QueueC])
+def test_contains_allows_item_replacement_without_cursor_mutation(queue_type):
+    queue = queue_type([MembershipPayload(), MembershipPayload()])
+    seen = []
+
+    class Probe:
+        def __eq__(self, other):
+            seen.append(other)
+            queue[0] = None
+            return False
+
+    assert Probe() not in queue
+    assert len(seen) == 2
+    assert queue[0] is None

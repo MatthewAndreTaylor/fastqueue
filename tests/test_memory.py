@@ -45,12 +45,25 @@ def _native_clear(queue):
 
 def _queuec_storage(queue):
     assert type(queue).__basicsize__ == (
-        object.__basicsize__ + 4 * sizeof(c_size_t) + sizeof(c_void_p)
+        object.__basicsize__ + 3 * sizeof(c_size_t) + sizeof(c_void_p)
     )
     address = id(queue) + object.__basicsize__
-    fields = (c_size_t * 4).from_address(address)
-    buffer = c_void_p.from_address(address + 4 * sizeof(c_size_t)).value
+    fields = (c_size_t * 3).from_address(address)
+    buffer = c_void_p.from_address(address + 3 * sizeof(c_size_t)).value
     return fields[1], buffer
+
+
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="PyType_GetSlot requires heap types before Python 3.10",
+)
+def test_native_method_lookup_uses_generic_getter(queue_type):
+    get_slot = pythonapi.PyType_GetSlot
+    get_slot.argtypes = [py_object, c_int]
+    get_slot.restype = c_void_p
+    # CPython specializes method calls only with the canonical getter, not a thunk.
+    assert get_slot(queue_type, 58) == get_slot(object, 58)  # Py_tp_getattro
 
 
 def _create_empty(queue_type):
@@ -534,57 +547,158 @@ def _check_deeply_nested_queues(queue_type):
     assert reference() is None
 
 
-def _check_cached_nodes_reused(queue_type):
-    # Queue's native fields follow PyObject_HEAD: head, tail, length, free_nodes.
-    assert queue_type.__basicsize__ == object.__basicsize__ + 4 * sizeof(c_void_p)
-    queue = queue_type()
-    fields = (c_void_p * 4).from_address(id(queue) + object.__basicsize__)
+def _queue_chunk_length(queue_type):
+    probe = queue_type()
+    pointers = (c_void_p * 2).from_address(id(probe) + object.__basicsize__)
+    count = 0
+    while pointers[0] == pointers[1]:
+        probe.enqueue(None)
+        count += 1
+    return count - 1
 
-    def nodes(pointer):
+
+def test_queue_head_and_tail_entry_counts():
+    chunklen = _queue_chunk_length(Queue)
+    queue = Queue()
+
+    def entry_counts(value):
+        address = (
+            id(value) + object.__basicsize__
+            + 2 * sizeof(c_void_p) + sizeof(c_ssize_t)
+        )
+        tail, head = (c_ssize_t * 2).from_address(address)
+        return head, tail
+
+    assert entry_counts(queue) == (0, 0)
+    assert entry_counts(queue.copy()) == (0, 0)
+    queue.extend(range(2 * chunklen + 7))
+    assert entry_counts(queue) == (chunklen, 7)
+    for remaining in range(chunklen - 1, 0, -1):
+        queue.dequeue()
+        assert entry_counts(queue) == (remaining, 7)
+    copied = queue.copy()
+    assert entry_counts(copied) == (1, 7)
+    assert list(copied) == list(queue)
+    queue.dequeue()
+    assert entry_counts(queue) == (chunklen, 7)
+    for _ in range(chunklen):
+        queue.dequeue()
+    assert entry_counts(queue) == (7, 7)
+    queue.dequeue()
+    assert entry_counts(queue) == (6, 6)
+    copied = queue.copy()
+    assert entry_counts(copied) == (6, 6)
+    assert list(copied) == list(queue)
+    queue.enqueue(None)
+    assert entry_counts(queue) == (7, 7)
+    while queue:
+        queue.dequeue()
+    assert entry_counts(queue) == (0, 0)
+
+    # Refilling the retained node starts at a nonzero index and wraps.
+    queue.extend(range(chunklen))
+    assert entry_counts(queue) == (chunklen, chunklen)
+    copied = queue.copy()
+    assert entry_counts(copied) == (chunklen, chunklen)
+    assert list(copied) == list(queue)
+    queue.enqueue(chunklen)
+    assert entry_counts(queue) == (chunklen, 1)
+    assert list(queue) == list(range(chunklen + 1))
+    _native_clear(queue)
+    assert entry_counts(queue) == (0, 0)
+
+
+def _check_chunk_indices_wrap(queue_type):
+    chunklen = _queue_chunk_length(queue_type)
+    for bulk in (False, True):
+        queue = queue_type([0])
+        address = (
+            id(queue) + object.__basicsize__
+            + 2 * sizeof(c_void_p) + 3 * sizeof(c_ssize_t)
+        )
+        indices = (c_ssize_t * 2).from_address(address)
+        for value in range(1, 5 * chunklen):
+            if bulk:
+                queue.extend(iter((value,)))
+            else:
+                queue.enqueue(value)
+            assert queue.dequeue() == value - 1
+            assert all(0 <= index < chunklen for index in indices)
+        values = list(range(5 * chunklen, 7 * chunklen + 3))
+        if bulk:
+            queue.extend(iter(values))
+        else:
+            for value in values:
+                queue.enqueue(value)
+        expected = list(range(5 * chunklen - 1, 7 * chunklen + 3))
+        assert list(queue) == expected
+        assert list(queue.copy()) == expected
+        gc.collect()
+        for value in expected:
+            assert queue.dequeue() == value
+            assert all(0 <= index < chunklen for index in indices)
+        assert not queue
+
+
+def _check_cached_nodes_reused(queue_type):
+    # Queue owns head, tail, length, both entry counts, indices, and free_nodes.
+    assert queue_type.__basicsize__ == (
+        object.__basicsize__ + 3 * sizeof(c_void_p)
+        + 5 * sizeof(c_ssize_t)
+    )
+    chunklen = _queue_chunk_length(queue_type)
+    queue = queue_type()
+    address = id(queue) + object.__basicsize__
+    head = c_void_p.from_address(address)
+    free_nodes = c_void_p.from_address(
+        address + 2 * sizeof(c_void_p) + 5 * sizeof(c_ssize_t)
+    )
+
+    def nodes(active):
+        pointer = head.value if active else free_nodes.value
         addresses = set()
         while pointer:
             assert pointer not in addresses, "Cycle in native node chain"
             addresses.add(pointer)
-            # QueueNode.next follows numEntries, front, and back.
-            pointer = c_void_p.from_address(pointer + 3 * sizeof(c_ssize_t)).value
+            pointer = c_void_p.from_address(pointer).value
         return addresses
 
-    values = (None,) * 1025
+    values = (None,) * (4 * chunklen + 1)
     queue.extend(values)
-    original = nodes(fields[0])
+    original = nodes(True)
     assert len(original) > 1
-    assert not nodes(fields[3])
-    for _ in range(513):
+    assert not nodes(False)
+    for _ in range(2 * chunklen + 1):
         queue.dequeue()
-    active, cached = nodes(fields[0]), nodes(fields[3])
+    active, cached = nodes(True), nodes(False)
     assert cached
     assert active.isdisjoint(cached)
     assert active | cached == original
-    queue.extend(values[:513])
-    assert nodes(fields[0]) == original
-    assert not nodes(fields[3])
+    queue.extend(values[:2 * chunklen + 1])
+    assert nodes(True) == original
+    assert not nodes(False)
     for _ in values:
         queue.dequeue()
-    active, cached = nodes(fields[0]), nodes(fields[3])
+    active, cached = nodes(True), nodes(False)
     assert len(active) == 1
     assert active.isdisjoint(cached)
     assert active | cached == original
     for _ in values:
         queue.enqueue(None)
-    assert nodes(fields[0]) == original
-    assert not nodes(fields[3])
+    assert nodes(True) == original
+    assert not nodes(False)
 
     _native_clear(queue)
     payloads = [Payload() for _ in values]
     references = [weakref.ref(payload) for payload in payloads]
     queue.extend(payloads)
     del payloads
-    for _ in range(513):
+    for _ in range(2 * chunklen + 1):
         queue.dequeue()
-    assert nodes(fields[3])
+    assert nodes(False)
     _native_clear(queue)
     gc.collect()
-    active, cached = nodes(fields[0]), nodes(fields[3])
+    active, cached = nodes(True), nodes(False)
     assert not queue
     assert all(reference() is None for reference in references)
     assert len(active) == 1
@@ -592,8 +706,8 @@ def _check_cached_nodes_reused(queue_type):
     assert active | cached == original
     _native_clear(queue)
     queue.extend(values)
-    assert nodes(fields[0]) == original
-    assert not nodes(fields[3])
+    assert nodes(True) == original
+    assert not nodes(False)
     assert [queue.dequeue() for _ in values] == list(values)
 
 
@@ -722,7 +836,46 @@ def _check_cached_nodes_reentry(queue_type):
     assert [copied.dequeue() for _ in expected] == expected
 
 
+def _check_large_contiguous_storage(queue_type):
+    from collections import deque
+
+    queue = queue_type(range(40000))
+    capacity, _ = _queuec_storage(queue)
+    expected = deque(range(40000))
+    for value in range(40000, capacity):
+        queue.enqueue(value)
+        expected.append(value)
+    for _ in range(capacity // 2):
+        assert queue.dequeue() == expected.popleft()
+    for value in range(capacity, capacity + capacity // 2 + 1):
+        queue.enqueue(value)
+        expected.append(value)
+    assert list(queue) == list(expected)
+    copied = queue.copy()
+    assert list(copied) == list(expected)
+    del copied
+
+    class LargeHint:
+        def __len__(self):
+            return 9_000_000
+
+        def __iter__(self):
+            return iter(())
+
+    # Exercise large growth without creating millions of payloads.
+    queue.extend(LargeHint())
+    assert list(queue) == list(expected)
+    payload = Payload()
+    payload.queue = queue
+    reference = weakref.ref(payload)
+    queue.enqueue(payload)
+    del payload, queue
+    gc.collect()
+    assert reference() is None
+
+
 CHECKS = {
+    "large_contiguous_storage": _check_large_contiguous_storage,
     "release_payload": _check_releases_payload,
     "release_wrapped_payloads": _check_releases_wrapped_payloads,
     "copy_ownership": _check_copy_ownership,
@@ -739,6 +892,7 @@ CHECKS = {
     "prototype_destructor": _check_prototype_destructor,
     "reentrant_setitem": _check_reentrant_setitem,
     "deeply_nested": _check_deeply_nested_queues,
+    "chunk_indices_wrap": _check_chunk_indices_wrap,
     "cached_nodes_reused": _check_cached_nodes_reused,
     "cached_nodes_release_payloads": _check_cached_nodes_release_payloads,
     "cached_nodes_cycle": _check_cached_nodes_cycle,
@@ -822,6 +976,15 @@ def test_contiguous_extend_leaves_room_for_enqueue(initial, removed, added):
     assert not queue
 
 
+def test_contiguous_capacity_does_not_round_to_power_of_two():
+    queue = QueueC()
+    capacity = _queuec_storage(queue)[0]
+    assert capacity == 384
+    queue.extend(range(1001))
+    assert _queuec_storage(queue)[0] == capacity + 1001
+    assert list(queue) == list(range(1001))
+
+
 @pytest.mark.parametrize(
     "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
 )
@@ -870,12 +1033,16 @@ def test_reference_cycles_are_collected(queue_type):
 @pytest.mark.parametrize(
     "scenario",
     [
-        "cached_nodes_reused", "cached_nodes_release_payloads", "cached_nodes_cycle",
+        "chunk_indices_wrap", "cached_nodes_reused", "cached_nodes_release_payloads", "cached_nodes_cycle",
         "cached_nodes_iterators", "cached_nodes_reentry",
     ],
 )
 def test_queue_cached_nodes(scenario):
     _run_in_subprocess(Queue, scenario)
+
+
+def test_large_contiguous_storage():
+    _run_in_subprocess(QueueC, "large_contiguous_storage")
 
 
 if __name__ == "__main__":
