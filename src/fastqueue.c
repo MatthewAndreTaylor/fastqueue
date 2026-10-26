@@ -23,6 +23,7 @@ typedef struct {
     size_t capacity;
     size_t front;
     size_t back;
+    size_t state;
     PyObject** objects;
 } QueueC;
 
@@ -50,6 +51,7 @@ static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
     self->back = 0;
     self->capacity = CHUNKLEN;
     self->front = CHUNKEND;
+    self->state = 0;
     return (PyObject*)self;
 }
 
@@ -99,6 +101,7 @@ static int QueueC_clear(QueueC* self) {
     self->length = 0;
     self->front = self->capacity - 1;
     self->back = 0;
+    self->state++;
     return 0;
 }
 
@@ -135,6 +138,7 @@ static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
     self->front = (self->front + 1) % self->capacity;
     self->objects[self->front] = object;
     self->length++;
+    self->state++;
     Py_RETURN_NONE;
 }
 
@@ -147,6 +151,7 @@ static PyObject* QueueC_dequeue(QueueC* self) {
     PyObject* object = self->objects[self->back];
     self->back = (self->back + 1) % self->capacity;
     self->length--;
+    self->state++;
     return object;
 }
 
@@ -163,6 +168,7 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
 
     // Small optimization sizing, amortized approach is still very good
     size_t len = (size_t)PyObject_Size(iterator);
+    size_t old_length = self->length;
     if (len > self->length) {
         if (self->length + len > self->capacity) {
             QueueC_resize(self, (self->capacity + len) * 2);
@@ -177,6 +183,10 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
         for (size_t i = 0; i < len; ++i) {
             QueueC_enqueue(self, next(iterable));
         }
+    }
+
+    if (self->length != old_length) {
+        self->state++;
     }
 
     Py_DECREF(iterable);
@@ -232,9 +242,31 @@ static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
 }
 
 static int QueueC_contains(QueueC* self, PyObject* object) {
-    for (size_t i = 0; i < self->length; ++i) {
-        size_t index = (self->back + i) % self->capacity;
-        if (PyObject_RichCompareBool(object, self->objects[index], Py_EQ)) {
+    size_t length = self->length;
+    size_t state = self->state;
+    size_t back = self->back;
+    size_t capacity = self->capacity;
+
+    for (size_t i = 0; i < length; ++i) {
+        if (self->state != state) {
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Queue mutated during contains check");
+            return -1;
+        }
+        size_t index = (back + i) % capacity;
+        PyObject* item = self->objects[index];
+        Py_INCREF(item);
+        int compared = PyObject_RichCompareBool(object, item, Py_EQ);
+        Py_DECREF(item);
+        if (compared < 0) {
+            return -1;
+        }
+        if (self->state != state) {
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Queue mutated during contains check");
+            return -1;
+        }
+        if (compared) {
             return 1;
         }
     }
@@ -320,6 +352,7 @@ typedef struct Queue {
     PyObject_HEAD QueueNode_t* head;
     QueueNode_t* tail;
     Py_ssize_t length;
+    Py_ssize_t state;
 } Queue_t;
 
 static PyObject* Queue_is_empty(Queue_t* self, PyObject* args) {
@@ -349,6 +382,7 @@ static PyObject* Queue_new(PyTypeObject* type, PyObject* args,
     self->head = QueueNode_new();
     self->tail = self->head;
     self->length = 0;
+    self->state = 0;
     return (PyObject*)self;
 }
 
@@ -361,6 +395,7 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
     newQueue->head = NULL;
     newQueue->tail = NULL;
     newQueue->length = self->length;
+    newQueue->state = 0;
 
     QueueNode_t* current = self->head;
     while (current != NULL) {
@@ -409,6 +444,7 @@ static PyObject* Queue_enqueue(Queue_t* self, PyObject* py_object) {
     Py_INCREF(py_object);
     QueueNode_put(self->tail, py_object);
     self->length++;
+    self->state++;
     Py_RETURN_NONE;
 }
 
@@ -429,6 +465,7 @@ static PyObject* Queue_dequeue(Queue_t* self) {
         self->head = head->next;
         free(head);
     }
+    self->state++;
 
     return py_object;
 }
@@ -500,6 +537,9 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
         QueueNode_put(self->tail, next(iterable));
     }
     self->length += len;
+    if (len > 0) {
+        self->state++;
+    }
     Py_DECREF(iterable);
     Py_RETURN_NONE;
 }
@@ -566,16 +606,35 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
 }
 
 static int Queue_contains(Queue_t* self, PyObject* object) {
+    Py_ssize_t state = self->state;
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        for (Py_ssize_t i = 0; i < current->numEntries; ++i) {
-            if (PyObject_RichCompareBool(
-                    object, current->py_objects[(current->back + i) & CHUNKEND],
-                    Py_EQ)) {
+        Py_ssize_t entries = current->numEntries;
+        Py_ssize_t back = current->back;
+        QueueNode_t* next = current->next;
+        for (Py_ssize_t i = 0; i < entries; ++i) {
+            if (self->state != state) {
+                PyErr_SetString(PyExc_RuntimeError,
+                                "Queue mutated during contains check");
+                return -1;
+            }
+            PyObject* item = current->py_objects[(back + i) & CHUNKEND];
+            Py_INCREF(item);
+            int compared = PyObject_RichCompareBool(object, item, Py_EQ);
+            Py_DECREF(item);
+            if (compared < 0) {
+                return -1;
+            }
+            if (self->state != state) {
+                PyErr_SetString(PyExc_RuntimeError,
+                                "Queue mutated during contains check");
+                return -1;
+            }
+            if (compared) {
                 return 1;
             }
         }
-        current = current->next;
+        current = next;
     }
     return 0;
 }
