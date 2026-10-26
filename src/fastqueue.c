@@ -661,15 +661,21 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
 }
 
 static int Queue_contains(Queue_t* self, PyObject* object) {
-    // shortcut: comparisons must not enqueue or dequeue; add mutation tracking if required.
     QueueNode_t* current = self->head;
     while (current != NULL) {
         Py_ssize_t back = current == self->head ? self->back : 0;
         Py_ssize_t entries = current == self->head ? self->headEntries :
                             current == self->tail ? self->tailEntries : CHUNKLEN;
         for (Py_ssize_t i = 0; i < entries; ++i) {
-            PyObject* item = current->py_objects[(back + i) % CHUNKLEN];
-            if (PyObject_RichCompareBool(object, item, Py_EQ)) return 1;
+            PyObject* item =
+                current->py_objects[(back + i) % CHUNKLEN];
+            int result = PyObject_RichCompareBool(item, object, Py_EQ);
+            if (result < 0) {
+                return -1;
+            }
+            if (result) {
+                return 1;
+            }
         }
         current = current->next;
     }
