@@ -260,7 +260,7 @@ class MembershipPayload:
 @pytest.mark.parametrize('consumed', [0, 255, 256, 513])
 @pytest.mark.parametrize('refill', [False, True])
 def test_contains_detects_drain_and_same_length_refill(queue_type, consumed, refill, size):
-    queue = queue_type(MembershipPayload() for _ in range(consumed + size))
+    queue = queue_type([MembershipPayload() for _ in range(consumed + size)])
     for _ in range(consumed):
         queue.dequeue()
     references = tuple(weakref.ref(item) for item in queue)
@@ -270,7 +270,7 @@ def test_contains_detects_drain_and_same_length_refill(queue_type, consumed, ref
             while queue:
                 queue.dequeue()
             if refill:
-                queue.extend(MembershipPayload() for _ in range(size))
+                queue.extend([MembershipPayload() for _ in range(size)])
             return False
 
     with pytest.raises(RuntimeError, match='mutated'):
