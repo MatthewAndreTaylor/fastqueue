@@ -286,7 +286,13 @@ static int QueueC_contains(QueueC* self, PyObject* object) {
     size_t front = self->front;
     for (size_t i = 0; i < front - back; ++i) {
         PyObject* item = self->objects[(back + i) % self->capacity];
-        if (PyObject_RichCompareBool(object, item, Py_EQ)) return 1;
+        int result = PyObject_RichCompareBool(item, object, Py_EQ);
+        if (result < 0) {
+            return -1;
+        }
+        if (result) {
+            return 1;
+        }
     }
     return 0;
 }
