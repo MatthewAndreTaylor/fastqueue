@@ -538,12 +538,15 @@ def test_queue_head_and_tail_entry_counts():
     queue = Queue()
 
     def entry_counts(value):
+        pointers = (c_void_p * 2).from_address(id(value) + object.__basicsize__)
         address = (
             id(value) + object.__basicsize__
             + 2 * sizeof(c_void_p) + sizeof(c_ssize_t)
         )
-        tail, head = (c_ssize_t * 2).from_address(address)
-        return head, tail
+        front, back = (c_ssize_t * 2).from_address(address)
+        if pointers[0] == pointers[1]:
+            return front - back, front - back
+        return chunklen - back, front
 
     assert entry_counts(queue) == (0, 0)
     assert entry_counts(queue.copy()) == (0, 0)
@@ -571,7 +574,7 @@ def test_queue_head_and_tail_entry_counts():
         queue.dequeue()
     assert entry_counts(queue) == (0, 0)
 
-    # Refilling the retained node starts at a nonzero index and wraps.
+    # Draining resets the retained node so a full refill needs no extra node.
     queue.extend(range(chunklen))
     assert entry_counts(queue) == (chunklen, chunklen)
     copied = queue.copy()
@@ -590,7 +593,7 @@ def _check_chunk_indices_wrap(queue_type):
         queue = queue_type([0])
         address = (
             id(queue) + object.__basicsize__
-            + 2 * sizeof(c_void_p) + 3 * sizeof(c_ssize_t)
+            + 2 * sizeof(c_void_p) + sizeof(c_ssize_t)
         )
         indices = (c_ssize_t * 2).from_address(address)
         for value in range(1, 5 * chunklen):
@@ -599,7 +602,8 @@ def _check_chunk_indices_wrap(queue_type):
             else:
                 queue.enqueue(value)
             assert queue.dequeue() == value - 1
-            assert all(0 <= index < chunklen for index in indices)
+            assert 0 <= indices[0] <= chunklen
+            assert 0 <= indices[1] < chunklen
         values = list(range(5 * chunklen, 7 * chunklen + 3))
         if bulk:
             queue.extend(iter(values))
@@ -612,22 +616,23 @@ def _check_chunk_indices_wrap(queue_type):
         gc.collect()
         for value in expected:
             assert queue.dequeue() == value
-            assert all(0 <= index < chunklen for index in indices)
+            assert 0 <= indices[0] <= chunklen
+            assert 0 <= indices[1] < chunklen
         assert not queue
 
 
 def _check_cached_nodes_reused(queue_type):
-    # Queue owns head, tail, length, both entry counts, indices, and free_nodes.
+    # Queue owns head, tail, length, write/read indices, and free_nodes.
     assert queue_type.__basicsize__ == (
         object.__basicsize__ + 3 * sizeof(c_void_p)
-        + 5 * sizeof(c_ssize_t)
+        + 3 * sizeof(c_ssize_t)
     )
     chunklen = _queue_chunk_length(queue_type)
     queue = queue_type()
     address = id(queue) + object.__basicsize__
     head = c_void_p.from_address(address)
     free_nodes = c_void_p.from_address(
-        address + 2 * sizeof(c_void_p) + 5 * sizeof(c_ssize_t)
+        address + 2 * sizeof(c_void_p) + 3 * sizeof(c_ssize_t)
     )
 
     def nodes(active):

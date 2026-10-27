@@ -23,6 +23,8 @@ import re
 import subprocess
 import sys
 
+from native_source import source_bytes
+
 
 COLORS = {"Queue": "#0072B2", "QueueC": "#009E73", "deque": "#D55E00"}
 STYLES = (("before", "--"), ("after", "-"))
@@ -132,9 +134,11 @@ def measure_memory(output, version):
         raise ValueError("Memory worker imported a different checkout")
     if sys.version != build["python"] or platform.platform() != build["platform"]:
         raise ValueError("Memory worker must use the timing run's Python and platform")
-    files = {"source_sha256": root / "src" / "fastqueue.c", "extension_sha256": Path(build["extension"])}
+    files = {"extension_sha256": Path(build["extension"])}
 
     def verify_build():
+        if hashlib.sha256(source_bytes(root)).hexdigest() != build["source_sha256"]:
+            raise ValueError("Memory sources no longer match timings: " + str(root))
         for key, path in files.items():
             if hashlib.sha256(path.read_bytes()).hexdigest() != build[key]:
                 raise ValueError("Memory build no longer matches timings: " + str(path))
@@ -143,7 +147,7 @@ def measure_memory(output, version):
     sizes = [0] + manifest["sizes"]
     rows, layout = memory_samples(
         {"Queue": fastqueue.Queue, "QueueC": fastqueue.QueueC, "deque": deque},
-        sizes, files["source_sha256"].read_text())
+        sizes, source_bytes(root).decode("utf-8"))
     verify_build()
     stem = version + "-memory"
     with (output / (stem + ".csv")).open("w", newline="") as stream:
@@ -184,9 +188,10 @@ def measure(args):
     extension = Path(_fastqueue.__file__).resolve()
     if extension.parent != root or Path(fastqueue.__file__).resolve().parent != root / "fastqueue":
         raise RuntimeError("Build fastqueue in {} with this Python before benchmarking".format(root))
-    files = {"extension_sha256": extension, "source_sha256": root / "src" / "fastqueue.c",
+    files = {"extension_sha256": extension,
              "example_sha256": Path(example.__file__)}
     hashes = {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in files.items()}
+    hashes["source_sha256"] = hashlib.sha256(source_bytes(root)).hexdigest()
     random.seed(args.seed)
     sizes = args.sizes or list(range(args.step, args.max_size + 1, args.step))
     builders = {
@@ -213,7 +218,9 @@ def measure(args):
     frame["block"] = args.block
     stem = "{}-{}".format(args.worker, args.block)
     frame.to_csv(args.output / (stem + ".csv"), index=False)
-    if hashes != {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in files.items()}:
+    current_hashes = {key: hashlib.sha256(path.read_bytes()).hexdigest() for key, path in files.items()}
+    current_hashes["source_sha256"] = hashlib.sha256(source_bytes(root)).hexdigest()
+    if hashes != current_hashes:
         raise RuntimeError("Build or benchmark files changed during measurement")
     metadata = {
         "version": args.worker, "block": args.block, "trials": args.trials,

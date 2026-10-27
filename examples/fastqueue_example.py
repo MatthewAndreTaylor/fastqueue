@@ -52,6 +52,16 @@ class SingleArgProfile(QueueOperationProfile):
         self.execution_times.append(end - start)
 
 
+class IterationProfile(QueueOperationProfile):
+    def run(self) -> None:
+        test_instance = self.structure(self.constructor_params)
+        start = time.perf_counter_ns()
+        for item in test_instance:
+            pass
+        end = time.perf_counter_ns()
+        self.execution_times.append(end - start)
+
+
 def run_profiles(profiles: QueueOperationProfile, trials: int) -> None:
     for i in range(trials):
         print(f"Trial: {i + 1}/{trials}")
@@ -109,6 +119,15 @@ def extend_profiles(it):
         res.append(SingleArgProfile(deque, deque.extend, [items], i))
         res.append(SingleArgProfile(Queue, Queue.extend, [items], i))
         res.append(SingleArgProfile(QueueC, QueueC.extend, [items], i))
+    return res
+
+
+def iteration_profiles(it):
+    res = []
+    for i in it:
+        items = [random.randint(0, 1000) for _ in range(i)]
+        for structure in (deque, Queue, QueueC):
+            res.append(IterationProfile(structure, iter, i, items))
     return res
 
 

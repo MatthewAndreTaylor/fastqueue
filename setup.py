@@ -38,6 +38,7 @@ setup(
         Extension(
             "_fastqueue",
             ["src/fastqueue.c"],
+            depends=["src/queue.c", "src/queue_contiguous.c"],
         )
     ],
     cmdclass={"build_ext": build_ext},

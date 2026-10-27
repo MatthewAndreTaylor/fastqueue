@@ -70,28 +70,125 @@ True
 
 ## Example Benchmarks
 
-### Queue operations
+One command produces a **2 x 2 image matrix** for enqueue, dequeue, extend, and
+iteration, comparing `Queue`, `QueueC`, and `collections.deque`.
+The layout, colors, and arithmetic means match
+[`compare_queue.py`](examples/compare_queue.py), with one solid line per queue type.
+Both axes are linear and start at zero; lower elapsed time is better.
 
-Ubuntu
+Each line connects the measured mean at **99 queue sizes, from 500 to 49,500
+items in steps of 500**. Each point averages **50 trials**, following **2 warmups**.
+All operation/type/size combinations are shuffled each trial using a fixed seed.
+The graphs use the measured points directly, without smoothing or curve fitting.
 
-![Queue_times](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/1c47cdc5-e7cc-4c89-8902-91359f660002)
-![Queue_types_linux](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/59a6d2c6-51c6-45e1-aa4e-eb6679616a75)
+| Operation | Timed workload |
+| --- | --- |
+| Enqueue | Add N items individually to an empty queue (`appendleft` for deque). |
+| Dequeue | Remove N items from a prefilled queue (`pop` for deque). |
+| Extend | One `extend` call with a prebuilt list of N items. |
+| Iteration | One full pass with `for item in queue: pass`. |
 
-Windows
+Enqueue, dequeue, and extend reuse the exact profiles used by `compare_queue.py`,
+including its unbound method calls and Python loop overhead. Input generation,
+queue construction/prefilling, and destruction are outside the timers. The
+iteration panel measures sequential traversal; the comparison script's fourth
+panel measures random indexing. `Queue` currently iterates through indexed
+lookups over linked chunks, so its traversal cost grows faster than its length.
+All workloads are single-threaded.
 
-![Queue_times](https://user-images.githubusercontent.com/100451342/232172485-c17b6b33-986f-461b-b0bf-b26b3f6e8304.png)
-![Queue_types](https://user-images.githubusercontent.com/100451342/232172490-bd90b021-7aeb-47b8-99e0-2481ccbc1f8f.png)
+Collected on **2026-10-27** from **master `a9e21de`**, with fresh native builds of
+**fastqueue-lib 0.0.18**, **CPython 3.11.15**, **Matplotlib 3.11.2**, and
+**pandas 3.1.0**, on an **Intel Core Ultra 7 265H**. Windows 11 Enterprise and
+WSL2 Ubuntu 24.04 runs used the same machine and ran sequentially. Results depend
+on the machine, Python build, and workload; WSL includes its virtualization environment.
+Raw JSON includes every sample, source revision, source and extension hashes,
+import path, and environment details.
 
-### Iteration
+### Windows (PowerShell)
 
+From the repository root, prepare the environment with `uv` and rebuild the
+current package. A C/C++ compiler is required.
 
-Ubuntu
+```powershell
+uv venv --python 3.11 .tox/bench-windows
+uv pip install --python .tox/bench-windows/Scripts/python.exe --reinstall-package fastqueue-lib . matplotlib==3.11.2 pandas==3.1.0
+```
 
-![Iterable_Instantiation](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/85939d12-73ed-42a5-a8bd-b2bea4ee599c)
-![Iterable_Iteration](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/b17f5f66-26b5-4e21-b5e5-c8fcbe5433a9)
+![Windows queue benchmark matrix](docs/benchmarks/windows.svg)
 
-Windows
+```powershell
+.tox/bench-windows/Scripts/python.exe -u examples/benchmark.py
+```
 
-![Iterable_Instantiation](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/a7f89750-3b3b-475a-ac93-849c62d0c4a6)
-![Iterable_Iteration](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/9ee2feed-28a5-44a1-b72d-eff17804ebdd)
+[Raw Windows measurements](docs/benchmarks/windows.json)
 
+### WSL2 (Ubuntu terminal)
+
+From the repository root in WSL, prepare a separate Linux environment with `uv`
+and a C/C++ compiler (for Ubuntu, `sudo apt install build-essential`).
+
+```bash
+uv venv --python 3.11 .tox/bench-wsl
+uv pip install --python .tox/bench-wsl/bin/python --reinstall-package fastqueue-lib . matplotlib==3.11.2 pandas==3.1.0
+```
+
+![WSL2 Ubuntu queue benchmark matrix](docs/benchmarks/wsl.svg)
+
+```bash
+.tox/bench-wsl/bin/python -u examples/benchmark.py
+```
+
+[Raw WSL measurements](docs/benchmarks/wsl.json)
+
+Each benchmark command collects all four operations and writes the platform's
+SVG, PNG, and JSON to `docs/benchmarks`. Use `--plot-only` to regenerate the matrix
+from its saved measurements, `--output` to save elsewhere, or `--sizes` and
+`--trials` to change the workload. Rebuild the package after changing native code
+before collecting new measurements.
+
+### Enqueue optimization comparison
+
+This compares `Queue.enqueue` from the published **0.0.17** source, unmodified
+**master `a9e21de`**, and the optimized implementation in this working tree with
+`collections.deque.appendleft`. All native builds use the same Python and compiler
+within each platform. Each trial shuffles all builds and sizes in one process,
+using identical input lists. There are **150 measured trials**, **2 warmups**, and
+the same 99 sizes as above. The right panel shows deque time divided by Queue
+time: values above 1 favor Queue. Points are arithmetic means without smoothing.
+
+The optimized Queue uses linear positions within each block, removes redundant
+entry counts, and moves allocation into a separate function. Its object is 16
+bytes smaller on these 64-bit builds. A partially consumed live queue can need
+one additional 384-item block compared with the previous layout.
+
+| CPython 3.11.15 | 0.0.17 | Master | Optimized | deque | Optimized speedup over deque |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Windows | 18.48 ns/item | 18.17 ns/item | 17.93 ns/item | 18.70 ns/item | 1.043x |
+| WSL2 | 14.70 ns/item | 14.36 ns/item | 13.68 ns/item | 14.60 ns/item | 1.068x |
+
+These aggregate rates divide the sum of mean elapsed times by the sum of queue
+sizes. Individual points vary; the Windows improvement over master is only
+about 1.3%, while WSL improves about 5.0%. The four-operation matrices above
+remain measurements of unmodified master `a9e21de`.
+
+[`compare_enqueue.py`](examples/compare_enqueue.py) takes `--build LABEL=PATH`
+arguments pointing to separately compiled `_fastqueue` extensions. Build every
+version with the interpreter used for the comparison. The exact paths below
+refer to the isolated baseline builds used for this run; the optimized Windows
+extension was built in the repository root with `python setup.py build_ext --inplace`.
+
+![Windows enqueue comparison](docs/benchmarks/enqueue-windows.svg)
+
+```powershell
+.tox/bench-windows/Scripts/python.exe -u examples/compare_enqueue.py --build 0.0.17=.tox/enqueue-opt/release311/_fastqueue.cp311-win_amd64.pyd --build latest=.tox/enqueue-opt/latest/_fastqueue.cp311-win_amd64.pyd --build optimized=_fastqueue.cp311-win_amd64.pyd --trials 150 --seed 20261027 --output docs/benchmarks/enqueue-windows
+```
+
+[Raw Windows comparison](docs/benchmarks/enqueue-windows.json)
+
+![WSL2 enqueue comparison](docs/benchmarks/enqueue-wsl.svg)
+
+```bash
+.tox/bench-wsl/bin/python -u examples/compare_enqueue.py --build 0.0.17=.tox/enqueue-opt/wsl-release311/_fastqueue.cpython-311-x86_64-linux-gnu.so --build latest=.tox/enqueue-opt/wsl-latest/_fastqueue.cpython-311-x86_64-linux-gnu.so --build optimized=.tox/enqueue-opt/wsl-linear/_fastqueue.cpython-311-x86_64-linux-gnu.so --trials 150 --seed 20261027 --output docs/benchmarks/enqueue-wsl
+```
+
+[Raw WSL comparison](docs/benchmarks/enqueue-wsl.json)
