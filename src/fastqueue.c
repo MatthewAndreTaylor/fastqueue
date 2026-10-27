@@ -29,6 +29,7 @@ PyDoc_STRVAR(enqueue_doc, "Add an item to the front of the Queue.");
 PyDoc_STRVAR(dequeue_doc,
              "Remove and return an item from the end of the Queue.");
 PyDoc_STRVAR(extend_doc, "Enqueue a sequence of elements from an iterator.");
+PyDoc_STRVAR(clear_doc, "Remove all items from the Queue.");
 
 /**
  * Single ended Contiguous Python Queue
@@ -95,6 +96,11 @@ static int QueueC_clear(QueueC* self) {
         Py_DECREF(object);
     }
     return 0;
+}
+
+static PyObject* QueueC_clear_method(QueueC* self, PyObject* args) {
+    QueueC_clear(self);
+    Py_RETURN_NONE;
 }
 
 static void QueueC_dealloc(QueueC* self) {
@@ -286,7 +292,10 @@ static int QueueC_contains(QueueC* self, PyObject* object) {
     size_t front = self->front;
     for (size_t i = 0; i < front - back; ++i) {
         PyObject* item = self->objects[(back + i) % self->capacity];
+        // __eq__ may drop the queue's reference to item.
+        Py_INCREF(item);
         int result = PyObject_RichCompareBool(item, object, Py_EQ);
+        Py_DECREF(item);
         if (result < 0) {
             return -1;
         }
@@ -313,6 +322,7 @@ static PyMethodDef QueueC_methods[] = {
     {"enqueue", (PyCFunction)QueueC_enqueue, METH_O, enqueue_doc},
     {"dequeue", (PyCFunction)QueueC_dequeue, METH_NOARGS, dequeue_doc},
     {"extend", (PyCFunction)QueueC_extend, METH_O, extend_doc},
+    {"clear", (PyCFunction)QueueC_clear_method, METH_NOARGS, clear_doc},
     {"__copy__", (PyCFunction)QueueC_copy, METH_NOARGS, copy_doc},
     {"copy", (PyCFunction)QueueC_copy, METH_NOARGS, copy_doc},
     {NULL, NULL, 0, NULL}};
@@ -522,6 +532,11 @@ static int Queue_clear(Queue_t* self) {
     return 0;
 }
 
+static PyObject* Queue_clear_method(Queue_t* self, PyObject* args) {
+    Queue_clear(self);
+    Py_RETURN_NONE;
+}
+
 // Deallocate the Queue
 static void Queue_dealloc(Queue_t* self) {
     if (self == NULL) {
@@ -675,7 +690,9 @@ static int Queue_contains(Queue_t* self, PyObject* object) {
         for (Py_ssize_t i = 0; i < entries; ++i) {
             PyObject* item =
                 current->py_objects[(back + i) % CHUNKLEN];
+            Py_INCREF(item);
             int result = PyObject_RichCompareBool(item, object, Py_EQ);
+            Py_DECREF(item);
             if (result < 0) {
                 return -1;
             }
@@ -704,8 +721,10 @@ static PyMethodDef Queue_methods[] = {
     {"enqueue", (PyCFunction)Queue_enqueue, METH_O, enqueue_doc},
     {"dequeue", (PyCFunction)Queue_dequeue, METH_NOARGS, dequeue_doc},
     {"extend", (PyCFunction)Queue_extend, METH_O, extend_doc},
+    {"clear", (PyCFunction)Queue_clear_method, METH_NOARGS, clear_doc},
     {"__copy__", (PyCFunction)Queue_copy, METH_NOARGS, copy_doc},
     {"copy", (PyCFunction)Queue_copy, METH_NOARGS, copy_doc},
+    
     {NULL, NULL, 0, NULL}};
 
 PyDoc_STRVAR(queue_doc, "Queue() -> Single ended Queue object.");

@@ -40,6 +40,10 @@ class Queue:
         """
         pass
 
+    def clear(self) -> None:
+        """Remove all items from the Queue."""
+        pass
+
     def __len__(self) -> int:
         pass
 
@@ -104,6 +108,10 @@ class QueueC:
         elements to be enqueued.
         :param self:
         """
+        pass
+
+    def clear(self) -> None:
+        """Remove all items from the Queue."""
         pass
 
     def __len__(self) -> int:

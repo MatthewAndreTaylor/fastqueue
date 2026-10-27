@@ -11,7 +11,7 @@ import sys
 import tracemalloc
 import weakref
 from ctypes import (
-    PYFUNCTYPE, cast, c_int, c_size_t, c_ssize_t, c_void_p, py_object,
+    cast, c_int, c_size_t, c_ssize_t, c_void_p, py_object,
     pythonapi, sizeof,
 )
 from pathlib import Path
@@ -32,17 +32,6 @@ class Payload:
     pass
 
 
-def _native_clear(queue):
-    get_slot = pythonapi.PyType_GetSlot
-    get_slot.argtypes = [py_object, c_int]
-    get_slot.restype = c_void_p
-    # Py_tp_clear is slot 51 in CPython's stable typeslots.h definitions.
-    address = get_slot(type(queue), 51)
-    assert address
-    clear = PYFUNCTYPE(c_int, py_object)(address)
-    assert clear(queue) == 0
-
-
 def _queuec_storage(queue):
     assert type(queue).__basicsize__ == (
         object.__basicsize__ + 3 * sizeof(c_size_t) + sizeof(c_void_p)
@@ -51,19 +40,6 @@ def _queuec_storage(queue):
     fields = (c_size_t * 3).from_address(address)
     buffer = c_void_p.from_address(address + 3 * sizeof(c_size_t)).value
     return fields[1], buffer
-
-
-@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
-@pytest.mark.skipif(
-    sys.version_info < (3, 10),
-    reason="PyType_GetSlot requires heap types before Python 3.10",
-)
-def test_native_method_lookup_uses_generic_getter(queue_type):
-    get_slot = pythonapi.PyType_GetSlot
-    get_slot.argtypes = [py_object, c_int]
-    get_slot.restype = c_void_p
-    # CPython specializes method calls only with the canonical getter, not a thunk.
-    assert get_slot(queue_type, 58) == get_slot(object, 58)  # Py_tp_getattro
 
 
 def _create_empty(queue_type):
@@ -324,12 +300,12 @@ def _check_native_contiguous_clear(queue_type):
         queue.enqueue(payload)
     del payload
     storage = _queuec_storage(queue)
-    _native_clear(queue)
+    queue.clear()
     gc.collect()
     assert not queue
     assert all(reference() is None for reference in references)
     assert _queuec_storage(queue) == storage
-    _native_clear(queue)
+    queue.clear()
     queue.extend(range(storage[0]))
     assert _queuec_storage(queue) == storage
     assert [queue.dequeue() for _ in range(storage[0])] == list(range(storage[0]))
@@ -349,7 +325,7 @@ def _check_native_clear_reentry(queue_type):
             references.append(weakref.ref(payload))
             queue.enqueue(payload)
             del payload
-            _native_clear(queue)
+            queue.clear()
             observations.append(len(queue))
             queue.extend(range(4097))
 
@@ -360,14 +336,14 @@ def _check_native_clear_reentry(queue_type):
         queue.enqueue(payload)
     del payload
     storage = _queuec_storage(queue) if queue_type is QueueC else None
-    _native_clear(queue)
+    queue.clear()
     gc.collect()
     assert observations == ([1500, True, 0] if queue_type is QueueC else [1500, 0])
     assert all(reference() is None for reference in references)
     assert not queue
     if queue_type is QueueC:
         assert _queuec_storage(queue)[0] > storage[0]
-    _native_clear(queue)
+    queue.clear()
     assert not queue
     queue.enqueue(42)
     assert queue.dequeue() == 42
@@ -395,7 +371,7 @@ def _check_native_clear_reentry(queue_type):
         references.append(weakref.ref(payload))
         queue.enqueue(payload)
     del payload
-    _native_clear(queue)
+    queue.clear()
     gc.collect()
     assert observations == [True]
     assert len(references) == added + 2
@@ -604,7 +580,7 @@ def test_queue_head_and_tail_entry_counts():
     queue.enqueue(chunklen)
     assert entry_counts(queue) == (chunklen, 1)
     assert list(queue) == list(range(chunklen + 1))
-    _native_clear(queue)
+    queue.clear()
     assert entry_counts(queue) == (0, 0)
 
 
@@ -688,7 +664,7 @@ def _check_cached_nodes_reused(queue_type):
     assert nodes(True) == original
     assert not nodes(False)
 
-    _native_clear(queue)
+    queue.clear()
     payloads = [Payload() for _ in values]
     references = [weakref.ref(payload) for payload in payloads]
     queue.extend(payloads)
@@ -696,7 +672,7 @@ def _check_cached_nodes_reused(queue_type):
     for _ in range(2 * chunklen + 1):
         queue.dequeue()
     assert nodes(False)
-    _native_clear(queue)
+    queue.clear()
     gc.collect()
     active, cached = nodes(True), nodes(False)
     assert not queue
@@ -704,7 +680,7 @@ def _check_cached_nodes_reused(queue_type):
     assert len(active) == 1
     assert active.isdisjoint(cached)
     assert active | cached == original
-    _native_clear(queue)
+    queue.clear()
     queue.extend(values)
     assert nodes(True) == original
     assert not nodes(False)

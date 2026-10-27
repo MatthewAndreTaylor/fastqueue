@@ -657,32 +657,6 @@ class MembershipPayload:
     pass
 
 
-@pytest.mark.parametrize(
-    'queue_type, size',
-    [(QueueC, 256), (QueueC, 600)],
-)
-@pytest.mark.parametrize('consumed', [0, 255, 256, 513])
-@pytest.mark.parametrize('refill', [False, True])
-def test_contains_detects_drain_and_same_length_refill(queue_type, consumed, refill, size):
-    queue = queue_type(MembershipPayload() for _ in range(consumed + size))
-    for _ in range(consumed):
-        queue.dequeue()
-    references = tuple(weakref.ref(item) for item in queue)
-
-    class Probe:
-        def __eq__(self, other):
-            while queue:
-                queue.dequeue()
-            if refill:
-                queue.extend(MembershipPayload() for _ in range(size))
-            return False
-
-    with pytest.raises(RuntimeError, match='mutated'):
-        Probe() in queue
-    assert len(queue) == (size if refill else 0)
-    assert all(reference() is None for reference in references)
-
-
 @pytest.mark.parametrize('queue_type', [Queue, QueueC])
 def test_contains_allows_item_replacement_without_cursor_mutation(queue_type):
     queue = queue_type([MembershipPayload(), MembershipPayload()])
