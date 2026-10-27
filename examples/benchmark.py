@@ -1,7 +1,7 @@
-"""Benchmark the current build and create a 2x2 README image matrix.
+"""Benchmark the current build and create a 2x3 README image matrix.
 
-Uses the same enqueue, dequeue and extend workloads as compare_queue.py.
-The fourth panel measures sequential iteration rather than random indexing.
+Enqueue, dequeue, extend and random access share compare_queue.py's profiles.
+Also measures sequential iteration and mixed enqueue/dequeue pairs.
 """
 
 import argparse
@@ -31,16 +31,20 @@ COLORS = {"Queue": "#0072B2", "QueueC": "#009E73", "deque": "#D55E00"}
 OPERATIONS = {
     "enqueue": "Enqueue / appendleft",
     "dequeue": "Dequeue / pop",
-    "extend": "Extend (one bulk call)",
+    "mixed": "Mixed (enqueue + dequeue)",
     "iteration": "Iteration (one full pass)",
+    "getitem": "Random access (__getitem__)",
+    "extend": "Extend (one bulk call)",
 }
 BUILDERS = {
     "enqueue": example.enqueue_profiles,
     "dequeue": example.dequeue_profiles,
     "extend": example.extend_profiles,
     "iteration": example.iteration_profiles,
+    "getitem": example.getter_profiles,
+    "mixed": example.mixed_profiles,
 }
-DEFAULT_SIZES = list(range(500, 50000, 500))
+DEFAULT_SIZES = list(range(500, 100000, 1000))
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -93,9 +97,13 @@ def environment():
 
 
 def plot(result, output):
-    """Match compare_queue.py's linear axes, means, colors and matrix layout."""
+    """Plot all six workloads using linear axes and arithmetic means."""
+    expected = {(operation, queue) for operation in OPERATIONS for queue in COLORS}
+    measured = {(row["operation"], row["queue"]) for row in result["results"]}
+    if not expected <= measured:
+        raise ValueError("Measurements lack required workloads; rerun without --plot-only")
     plt.rcParams.update({"font.family": "DejaVu Sans", "svg.fonttype": "none"})
-    figure, axes = plt.subplots(2, 2, figsize=(15, 9))
+    figure, axes = plt.subplots(2, 3, figsize=(18, 10))
     for axis, (operation, title) in zip(axes.flat, OPERATIONS.items()):
         for queue, color in COLORS.items():
             rows = sorted(
@@ -106,7 +114,7 @@ def plot(result, output):
                       [mean(row["samples_ns"]) / 1000 for row in rows],
                       color=color, linestyle="-", linewidth=1.7)
         axis.set_title(title, pad=12)
-        axis.set_xlabel("Items")
+        axis.set_xlabel("Initial items / pairs" if operation == "mixed" else "Items")
         axis.set_ylabel("Mean elapsed time (microseconds)")
         axis.set_xlim(left=0)
         axis.set_ylim(bottom=0)
@@ -122,11 +130,12 @@ def plot(result, output):
         loc="upper center", bbox_to_anchor=(0.5, 0.94), ncol=3, frameon=False)
     figure.text(0.5, 0.025,
                 "{} measured trials per size and type; {} warmups. "
-                "Arithmetic means; construction and destruction are outside timers."
+                "Arithmetic means; construction and destruction are outside timers.\n"
+                "Mixed workload: N enqueue/dequeue pairs (2N operations) at N initial items."
                 .format(result["trials"], result["warmups"]),
                 ha="center", fontsize=9, color="#555555")
-    figure.subplots_adjust(left=0.075, right=0.98, bottom=0.11, top=0.81,
-                           wspace=0.21, hspace=0.36)
+    figure.subplots_adjust(left=0.065, right=0.98, bottom=0.12, top=0.84,
+                           wspace=0.30, hspace=0.38)
     for suffix in ("svg", "png"):
         target = output / (env["slug"] + "." + suffix)
         figure.savefig(target, dpi=160, metadata={"Date": None})
@@ -144,7 +153,7 @@ def positive_int(value):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sizes", type=positive_int, nargs="+", default=DEFAULT_SIZES)
-    parser.add_argument("--trials", type=positive_int, default=50)
+    parser.add_argument("--trials", type=positive_int, default=25)
     parser.add_argument("--warmups", type=positive_int, default=2)
     parser.add_argument("--output", type=Path, default=Path("docs/benchmarks"))
     parser.add_argument("--plot-only", action="store_true",

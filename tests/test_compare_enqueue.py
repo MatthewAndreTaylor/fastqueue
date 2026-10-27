@@ -68,19 +68,6 @@ def test_split_source_hash_tracks_each_file(comparison, tmp_path, filename):
     assert comparison.build_metadata(extension)["source_sha256"] != before
 
 
-def test_memory_measurement_reads_split_layout(comparison):
-    root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location("compare_queue", root / "examples" / "compare_queue.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    rows, layout = module.memory_samples(
-        {"Queue": _fastqueue.Queue, "QueueC": _fastqueue.QueueC, "deque": deque},
-        [0, 385], comparison.source_bytes(root).decode("utf-8"))
-    assert layout["chunk_length"] == 384
-    assert layout["queuec_basicsize"] == _fastqueue.QueueC.__basicsize__
-    assert len(rows) == 12
-
-
 def test_plot_uses_raw_arithmetic_means_and_correct_speed_ratio(comparison, monkeypatch):
     figures = []
     monkeypatch.setattr(

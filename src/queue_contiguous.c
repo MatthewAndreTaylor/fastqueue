@@ -13,6 +13,7 @@ typedef struct {
     size_t capacity;
     size_t back;
     PyObject** objects;
+    size_t state;
 } QueueC;
 
 static PyObject* QueueC_new(PyTypeObject* type, PyObject* args,
@@ -66,6 +67,7 @@ static int QueueC_clear(QueueC* self) {
             self->back -= self->capacity;
             self->front -= self->capacity;
         }
+        self->state++;
         Py_DECREF(object);
     }
     return 0;
@@ -136,6 +138,7 @@ static PyObject* QueueC_enqueue(QueueC* self, PyObject* object) {
     Py_INCREF(object);
     objects[front % capacity] = object;
     self->front = front + 1;
+    self->state++;
     Py_RETURN_NONE;
 }
 
@@ -153,6 +156,7 @@ static PyObject* QueueC_dequeue(QueueC* self) {
         self->back -= self->capacity;
         self->front -= self->capacity;
     }
+    self->state++;
     return object;
 }
 
@@ -197,6 +201,7 @@ static PyObject* QueueC_extend(QueueC* self, PyObject* iterator) {
         size_t front = self->front % self->capacity;
         self->objects[front] = object;
         self->front++;
+        self->state++;
     }
 
     if (PyErr_ExceptionMatches(PyExc_StopIteration)) PyErr_Clear();
@@ -271,4 +276,85 @@ static int QueueC_contains(QueueC* self, PyObject* object) {
         }
     }
     return 0;
+}
+
+typedef struct {
+    PyObject_HEAD
+    QueueC* queue;
+    size_t index;
+    size_t state;
+    Py_ssize_t remaining;
+} QueueCIter;
+
+static int QueueCIter_traverse(QueueCIter* self, visitproc visit, void* arg) {
+    Py_VISIT(self->queue);
+    return 0;
+}
+
+static int QueueCIter_clear(QueueCIter* self) {
+    self->remaining = 0;
+    Py_CLEAR(self->queue);
+    return 0;
+}
+
+static void QueueCIter_dealloc(QueueCIter* self) {
+    PyObject_GC_UnTrack(self);
+    QueueCIter_clear(self);
+    PyObject_GC_Del(self);
+}
+
+static PyObject* QueueCIter_next(QueueCIter* self) {
+    if (self->remaining == 0) {
+        QueueCIter_clear(self);
+        return NULL;
+    }
+    QueueC* queue = self->queue;
+    if (self->state != queue->state) {
+        QueueCIter_clear(self);
+        PyErr_SetString(PyExc_RuntimeError, "QueueC mutated during iteration");
+        return NULL;
+    }
+    // A length hint may relocate live items without changing their order.
+    size_t index = queue->back + self->index;
+    if (index >= queue->capacity) index -= queue->capacity;
+    PyObject* object = queue->objects[index];
+    self->index++;
+    self->remaining--;
+    Py_INCREF(object);
+    return object;
+}
+
+static PyObject* QueueCIter_length_hint(QueueCIter* self, PyObject* args) {
+    return PyLong_FromSsize_t(self->remaining);
+}
+
+static PyMethodDef QueueCIter_methods[] = {
+    {"__length_hint__", (PyCFunction)QueueCIter_length_hint, METH_NOARGS,
+     "Return the number of items remaining."},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyTypeObject QueueCIterType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "_fastqueue.QueueCIterator",
+    .tp_basicsize = sizeof(QueueCIter),
+    .tp_dealloc = (destructor)QueueCIter_dealloc,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)QueueCIter_traverse,
+    .tp_clear = (inquiry)QueueCIter_clear,
+    .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc)QueueCIter_next,
+    .tp_methods = QueueCIter_methods,
+};
+
+static PyObject* QueueC_iter(QueueC* self) {
+    QueueCIter* iterator = PyObject_GC_New(QueueCIter, &QueueCIterType);
+    if (iterator == NULL) return NULL;
+    Py_INCREF(self);
+    iterator->queue = self;
+    iterator->index = 0;
+    iterator->state = self->state;
+    iterator->remaining = QueueC_len(self);
+    PyObject_GC_Track(iterator);
+    return (PyObject*)iterator;
 }

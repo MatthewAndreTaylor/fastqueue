@@ -39,14 +39,16 @@ OPERATIONS = {
 def memory_layout(source):
     """Read only the simple native field declarations used by these checkouts."""
     source = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
-    chunk = re.search(r"^\s*#define\s+CHUNKLEN\s+(\d+)\s*$", source, re.M)
-    if chunk is None or int(chunk[1]) < 1:
-        raise ValueError("Memory measurement requires a positive numeric CHUNKLEN")
-    chunklen = int(chunk[1])
+    constants = {name: int(value) for name, value in re.findall(
+        r"^\s*#define\s+(\w+)\s+(\d+)\s*$", source, re.M)}
+    initial_capacity = next((constants[name] for name in (
+        "QUEUE_NODE_INITIAL_CAPACITY", "QUEUE_CHUNKLEN", "CHUNKLEN") if name in constants), 0)
+    if initial_capacity < 1:
+        raise ValueError("Memory measurement requires a positive numeric initial node capacity")
     bodies = dict((name, body) for body, name in re.findall(
-        r"typedef\s+struct(?:\s+\w+)?\s*\{([^{}]*)\}\s*(QueueNode_t|QueueC)\s*;", source))
+        r"typedef\s+struct(?:\s+\w+)?\s*\{([^{}]*)\}\s*(Queue_t|QueueNode_t|QueueC)\s*;", source))
     layouts = {}
-    for name in ("QueueNode_t", "QueueC"):
+    for name in ("Queue_t", "QueueNode_t", "QueueC"):
         if name not in bodies:
             raise ValueError("Missing native layout: " + name)
         fields = []
@@ -58,53 +60,81 @@ def memory_layout(source):
                 fields.append(("_object_head", ctypes.c_byte * object.__basicsize__))
                 continue
             field = re.fullmatch(
-                r"(struct\s+\w+|\w+)(?:\s*(\*+)\s*|\s+)(\w+)(?:\s*\[\s*(CHUNKLEN)\s*\])?",
+                r"(struct\s+\w+|\w+)(?:\s*(\*+)\s*|\s+)(\w+)(?:\s*\[\s*(\w*)\s*\])?",
                 declaration)
             if field is None:
                 raise ValueError("Unsupported native field: " + declaration)
             native_type, pointer, field_name, array = field.groups()
             scalar = {"Py_ssize_t": ctypes.c_ssize_t, "size_t": ctypes.c_size_t}.get(native_type)
-            if array and not pointer or not pointer and scalar is None:
+            if (array is not None and not pointer) or (not pointer and scalar is None):
                 raise ValueError("Unsupported native field: " + declaration)
             field_type = ctypes.c_void_p if pointer else scalar
-            if array:
-                field_type = field_type * chunklen
+            if array is not None:
+                count = (int(array) if array.isdigit() else constants.get(array)) if array else 0
+                if count is None:
+                    raise ValueError("Unknown native array size: " + array)
+                field_type = field_type * count
             fields.append((field_name, field_type))
         layouts[name] = type(name, (ctypes.Structure,), {"_fields_": fields})
-    if not hasattr(layouts["QueueC"], "capacity"):
-        raise ValueError("QueueC layout has no capacity field")
-    return chunklen, layouts["QueueNode_t"], layouts["QueueC"]
+    if not any(hasattr(layouts["QueueC"], field) for field in ("capacity", "mask")):
+        raise ValueError("QueueC layout has no capacity or mask field")
+    return initial_capacity, layouts
 
 
 def memory_samples(queue_types, sizes, source):
-    chunklen, node_type, queuec_type = memory_layout(source)
+    initial_capacity, layouts = memory_layout(source)
+    queue_layout, node_type, queuec_type = (layouts[name] for name in ("Queue_t", "QueueNode_t", "QueueC"))
+    if ctypes.sizeof(queue_layout) != queue_types["Queue"].__basicsize__:
+        raise ValueError("Queue source layout does not match the loaded extension")
     if ctypes.sizeof(queuec_type) != queue_types["QueueC"].__basicsize__:
         raise ValueError("QueueC source layout does not match the loaded extension")
+    fixed_capacity = dict(node_type._fields_)["py_objects"]._length_
+    if not fixed_capacity and not hasattr(node_type, "capacity"):
+        raise ValueError("Flexible node layout has no capacity field")
     rows = []
     for operation in ("enqueue", "extend"):
-        for name, queue_type in queue_types.items():
+        for name, container_type in queue_types.items():
             for size in sizes:
-                queue = queue_type()
+                queue = container_type()
                 items = [None] * size
                 if operation == "extend":
                     queue.extend(items)
                 else:
-                    enqueue = queue_type.appendleft if name == "deque" else queue_type.enqueue
+                    enqueue = container_type.appendleft if name == "deque" else container_type.enqueue
                     for item in items:
                         enqueue(queue, item)
                 if len(queue) != size:
                     raise ValueError("Unexpected queue length during memory measurement")
                 native_bytes = 0
                 if name == "Queue":
-                    native_bytes = max(1, (size + chunklen - 1) // chunklen) * ctypes.sizeof(node_type)
+                    native = queue_layout.from_address(id(queue))
+                    seen = set()
+                    for address in (native.head, getattr(native, "free_nodes", None)):
+                        while address:
+                            if address in seen:
+                                raise ValueError("Repeated native node during memory measurement")
+                            seen.add(address)
+                            node = node_type.from_address(address)
+                            native_bytes += ctypes.sizeof(node_type)
+                            if not fixed_capacity:
+                                if node.capacity < initial_capacity:
+                                    raise ValueError("Invalid Queue node capacity")
+                                native_bytes += node.capacity * ctypes.sizeof(ctypes.c_void_p)
+                            address = node.next
                 elif name == "QueueC":
-                    capacity = queuec_type.from_address(id(queue)).capacity
+                    native = queuec_type.from_address(id(queue))
+                    capacity = native.mask + 1 if hasattr(native, "mask") else native.capacity
                     if capacity < size or capacity < 1:
                         raise ValueError("Invalid QueueC capacity")
+                    if hasattr(native, "mask") and capacity & (capacity - 1):
+                        raise ValueError("QueueC mask does not describe a power-of-two capacity")
                     native_bytes = capacity * ctypes.sizeof(ctypes.c_void_p)
                 rows.append({"queue_type": name, "operation": operation, "size": size,
                              "bytes": sys.getsizeof(queue) + native_bytes})
-    return rows, {"chunk_length": chunklen, "node_bytes": ctypes.sizeof(node_type),
+    return rows, {"initial_node_capacity": initial_capacity,
+                  "fixed_node_capacity": fixed_capacity or None,
+                  "node_header_bytes": node_type.py_objects.offset,
+                  "queue_basicsize": ctypes.sizeof(queue_layout),
                   "queuec_basicsize": ctypes.sizeof(queuec_type),
                   "pointer_bytes": ctypes.sizeof(ctypes.c_void_p)}
 

@@ -1,4 +1,5 @@
 import gc
+import struct
 import sys
 import weakref
 from collections import deque
@@ -329,7 +330,11 @@ def test_contiguous_extend_keeps_progress_after_iterator_error(removed):
 
 @pytest.mark.parametrize(
     "hint, error",
-    [(sys.maxsize, MemoryError), (-1, ValueError), (sys.maxsize + 1, OverflowError)],
+    [
+        (sys.maxsize, MemoryError),
+        (sys.maxsize // struct.calcsize("P") - 514, MemoryError),
+        (-1, ValueError), (sys.maxsize + 1, OverflowError),
+    ],
 )
 def test_contiguous_extend_invalid_length_hint_preserves_queue(hint, error):
     class InvalidLengthHint:
@@ -504,6 +509,51 @@ def test_copy_after_node_reuse(initial, removed, added):
     assert [queue.dequeue() for _ in range(1025)] == list(range(1025))
 
 
+def test_dynamic_nodes_copy_and_index_with_partial_head():
+    items = [MembershipPayload() for _ in range(384 + 768 + 1536 + 17)]
+    references = [weakref.ref(item) for item in items]
+    queue = Queue(items)
+    removed = 384 + 117
+    for _ in range(removed):
+        queue.dequeue()
+    expected = items[removed:]
+    tracked = expected[1]
+    before_copy = sys.getrefcount(tracked)
+    copied = queue.copy()
+    assert sys.getrefcount(tracked) == before_copy + 1
+    del tracked
+
+    replacements = []
+    # Both sides of the remaining 768- and 1536-slot node boundaries.
+    for index in (0, 650, 651, 2186, 2187, len(expected) - 1):
+        assert queue[index] is expected[index]
+        assert queue[index - len(expected)] is expected[index]
+        replacement = MembershipPayload()
+        replacements.append(weakref.ref(replacement))
+        queue[index - len(expected)] = replacement
+        expected[index] = replacement
+    assert list(queue) == expected
+    assert list(copied) == items[removed:]
+    del items, expected, replacement
+    queue.clear()
+    gc.collect()
+    assert all(reference() is None for reference in references[:removed])
+    assert all(reference() is not None for reference in references[removed:])
+    assert all(reference() is None for reference in replacements)
+    copied.clear()
+    gc.collect()
+    assert all(reference() is None for reference in references)
+
+    queue.extend(None for _ in range(6000))
+    payload = MembershipPayload()
+    payload.queue = queue
+    reference = weakref.ref(payload)
+    queue.enqueue(payload)
+    del payload, queue, copied
+    gc.collect()
+    assert reference() is None
+
+
 @pytest.mark.parametrize("removed", [1, 191, 383])
 @pytest.mark.parametrize("bulk", [False, True])
 def test_wrapped_single_node_grows_into_multiple_nodes(removed, bulk):
@@ -671,3 +721,82 @@ def test_contains_allows_item_replacement_without_cursor_mutation(queue_type):
     assert Probe() not in queue
     assert len(seen) == 2
     assert queue[0] is None
+
+
+@pytest.mark.parametrize("size", [2, 384 + 768 + 17])
+@pytest.mark.parametrize("outcome", [False, True, "raise"])
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
+def test_contains_allows_same_length_clear_and_refill(size, outcome, queue_type):
+    queue = queue_type()
+    needle = object()
+    replacement = [None] * (size - 1) + [needle]
+    events = []
+
+    class Compare:
+        def __eq__(self, other):
+            queue.clear()
+            queue.extend(replacement)
+            assert reference() is self
+            # Nested membership has its own cursor and must not disturb the
+            # outer scan, which resumes at logical index one after mutation.
+            assert needle in queue
+            events.append("compared")
+            if outcome == "raise":
+                raise RuntimeError("comparison failed after refilling")
+            return outcome
+
+        def __del__(self):
+            events.append("released")
+
+    item = Compare()
+    reference = weakref.ref(item)
+    queue.enqueue(item)
+    queue.extend(None for _ in range(size - 1))
+    del item
+    if outcome == "raise":
+        with pytest.raises(RuntimeError, match="comparison failed after refilling"):
+            needle in queue
+    else:
+        assert needle in queue
+    gc.collect()
+    assert list(queue) == replacement
+    assert events == ["compared", "released"]
+    assert reference() is None
+
+
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
+def test_contains_rechecks_cursor_after_comparison_item_destructor(queue_type):
+    queue = queue_type()
+    needle = object()
+    replacement = [None] * (384 + 768 + 17) + [needle]
+    events = []
+
+    class Compare:
+        def __eq__(self, other):
+            queue[0] = None
+            return False
+
+        def __del__(self):
+            # The comparison's temporary owned reference delays this mutation
+            # until after __eq__, when its saved node cursor may become stale.
+            queue.clear()
+            queue.extend(replacement)
+            events.append("refilled")
+
+    queue.enqueue(Compare())
+    queue.enqueue(None)
+    assert needle in queue
+    assert events == ["refilled"]
+    assert list(queue) == replacement
+
+
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
+def test_contains_stops_when_comparison_clears_queue(queue_type):
+    class Compare:
+        def __eq__(self, other):
+            queue.clear()
+            return False
+
+    queue = queue_type([Compare(), None])
+    assert object() not in queue
+    assert not queue

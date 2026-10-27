@@ -85,7 +85,7 @@ static PyTypeObject QueueType = {
     (inquiry)Queue_clear,                    /* tp_clear */
     0,                                       /* tp_richcompare */
     0,                                       /* tp_weaklistoffset */
-    0,                                       /* tp_iter */
+    (getiterfunc)Queue_iter,                  /* tp_iter */
     0,                                       /* tp_iternext */
     Queue_methods,                           /* tp_methods */
     0,                                       /* tp_members */
@@ -148,7 +148,7 @@ static PyTypeObject QueueCType = {
     (inquiry)QueueC_clear,                   /* tp_clear */
     0,                                       /* tp_richcompare */
     0,                                       /* tp_weaklistoffset */
-    0,                                       /* tp_iter */
+    (getiterfunc)QueueC_iter,                 /* tp_iter */
     0,                                       /* tp_iternext */
     QueueC_methods,                          /* tp_methods */
     0,                                       /* tp_members */
@@ -178,7 +178,8 @@ static PyModuleDef QueueModuleDef = {PyModuleDef_HEAD_INIT,
 
 PyMODINIT_FUNC PyInit__fastqueue(void) {
     PyObject* module;
-    if (PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0) {
+    if (PyType_Ready(&QueueIterType) < 0 || PyType_Ready(&QueueCIterType) < 0 ||
+        PyType_Ready(&QueueType) < 0 || PyType_Ready(&QueueCType) < 0) {
         return NULL;
     }
 

@@ -52,6 +52,21 @@ class SingleArgProfile(QueueOperationProfile):
         self.execution_times.append(end - start)
 
 
+class MixedProfile(SingleArgProfile):
+    def __init__(self, structure, enqueue, dequeue, data, size, constructor_params):
+        super().__init__(structure, enqueue, data, size, constructor_params)
+        self.dequeue = dequeue
+
+    def run(self) -> None:
+        test_instance = self.structure(self.constructor_params)
+        start = time.perf_counter_ns()
+        for item in self.data:
+            self.op(test_instance, item)
+            self.dequeue(test_instance)
+        end = time.perf_counter_ns()
+        self.execution_times.append(end - start)
+
+
 class IterationProfile(QueueOperationProfile):
     def run(self) -> None:
         test_instance = self.structure(self.constructor_params)
@@ -128,6 +143,18 @@ def iteration_profiles(it):
         items = [random.randint(0, 1000) for _ in range(i)]
         for structure in (deque, Queue, QueueC):
             res.append(IterationProfile(structure, iter, i, items))
+    return res
+
+
+def mixed_profiles(it):
+    res = []
+    for i in it:
+        initial = [random.randint(0, 1000) for _ in range(i)]
+        items = [random.randint(0, 1000) for _ in range(i)]
+        # appendleft/pop needs reversed storage to remove the same FIFO inputs.
+        res.append(MixedProfile(deque, deque.appendleft, deque.pop, items, i, initial[::-1]))
+        res.append(MixedProfile(Queue, Queue.enqueue, Queue.dequeue, items, i, initial))
+        res.append(MixedProfile(QueueC, QueueC.enqueue, QueueC.dequeue, items, i, initial))
     return res
 
 
