@@ -16,12 +16,13 @@ def iterate(o):
 
 iterable_structures = [
     "Matt's C Contiguous queue",
+    "Matt's C Non-contiguous queue",
     "Collections dequeue",
     "Numpy Array",
 ]
 iterables = []
 times = []
-for iterable_type in [QueueC, deque, numpy.array]:
+for iterable_type in [QueueC, Queue, deque, numpy.array]:
     start = time.time()
     iterables.append(iterable_type([i for i in range(size)]))
     times.append(time.time() - start)

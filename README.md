@@ -68,9 +68,6 @@ True
 ['🚒', '🛴', '🚅', '🚗']
 ```
 
-Another alternative is `fastqueue.LockQueue()` which supports all queue operations.
-`fastqueue.LockQueue()` is built as a thread-safe alternative to the other queue types.
-
 ## Example Benchmarks
 
 ### Queue operations

@@ -7,7 +7,3 @@ fastqueue API Reference
 .. autoclass:: fastqueue.QueueC
    :members:
 
-.. autoclass:: fastqueue.LockQueue
-   :inherited-members:
-   :members:
-

@@ -1,3 +1,3 @@
-__all__ = "Queue", "QueueC", "LockQueue"
+__all__ = "Queue", "QueueC"
 
-from _fastqueue import Queue, QueueC, LockQueue
+from _fastqueue import Queue, QueueC

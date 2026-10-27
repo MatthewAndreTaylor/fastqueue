@@ -40,14 +40,11 @@ class Queue:
         """
         pass
 
-    def __len__(self) -> int:
+    def clear(self) -> None:
+        """Remove all items from the Queue."""
         pass
 
-    def is_empty(self) -> bool:
-        """Returns whether the Queue is empty.
-
-        :return: True if the Queue is empty, False otherwise.
-        """
+    def __len__(self) -> int:
         pass
 
     def __getitem__(self, index: int):
@@ -113,14 +110,11 @@ class QueueC:
         """
         pass
 
-    def __len__(self) -> int:
+    def clear(self) -> None:
+        """Remove all items from the Queue."""
         pass
 
-    def is_empty(self) -> bool:
-        """Returns whether the Queue is empty.
-
-        :return: True if the Queue is empty, False otherwise.
-        """
+    def __len__(self) -> int:
         pass
 
     def __getitem__(self, index: int):
@@ -143,28 +137,5 @@ class QueueC:
         """Return a shallow copy of the Queue.
 
         :return: A shallow copy of the Queue object.
-        """
-        pass
-
-
-class LockQueue(Queue):
-    """
-    A Queue class that implements a FIFO data structure with locking.
-    """
-
-    def __init__(self, iterable: Optional[Iterable] = None) -> None:
-        """Initialize the LockQueue object.
-
-        :param iterable (Optional[Iterable], optional): An iterable to
-        initialize the LockQueue with. Defaults to None
-        :param self:
-        """
-        pass
-
-    def get(self):
-        """Return the first element of the LockQueue, None if no element exists.
-
-        :return: The first element of the LockQueue, or None if the LockQueue
-        is empty.
         """
         pass
