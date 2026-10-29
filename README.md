@@ -8,16 +8,12 @@
 
 Single-ended fast queues built in C tuned for Python.
 
-## Requirements
-
-- `python 3.7+`
-
 ## Installation
 
-To install fastqueue, using [pip](https://pypi.org/project/fastqueue-lib): 
+Install with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install fastqueue-lib
+uv pip install fastqueue-lib
 ```
 
 ## Quickstart
@@ -68,30 +64,15 @@ True
 ['🚒', '🛴', '🚅', '🚗']
 ```
 
-## Example Benchmarks
+## Benchmarks
 
-### Queue operations
+Run every benchmark and save all five figures as PNG and SVG, along with the
+measurements and build metadata in JSON:
 
-Ubuntu
+```bash
+uv pip install ".[benchmark]"
 
-![Queue_times](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/1c47cdc5-e7cc-4c89-8902-91359f660002)
-![Queue_types_linux](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/59a6d2c6-51c6-45e1-aa4e-eb6679616a75)
-
-Windows
-
-![Queue_times](https://user-images.githubusercontent.com/100451342/232172485-c17b6b33-986f-461b-b0bf-b26b3f6e8304.png)
-![Queue_types](https://user-images.githubusercontent.com/100451342/232172490-bd90b021-7aeb-47b8-99e0-2481ccbc1f8f.png)
-
-### Iteration
-
-
-Ubuntu
-
-![Iterable_Instantiation](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/85939d12-73ed-42a5-a8bd-b2bea4ee599c)
-![Iterable_Iteration](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/b17f5f66-26b5-4e21-b5e5-c8fcbe5433a9)
-
-Windows
-
-![Iterable_Instantiation](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/a7f89750-3b3b-475a-ac93-849c62d0c4a6)
-![Iterable_Iteration](https://github.com/MatthewAndreTaylor/fastqueue/assets/100451342/9ee2feed-28a5-44a1-b72d-eff17804ebdd)
+uv run python benchmark/main.py --profiles queue
+uv run python benchmark/main.py --profiles iteration
+```
 

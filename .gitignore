@@ -11,3 +11,5 @@ __pycache__
 *.whl
 .venv
 *.png
+docs/benchmarks
+benchmarks/experiments
