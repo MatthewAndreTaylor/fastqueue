@@ -6,8 +6,7 @@
  * --- fastqueue.Queue ---
  */
 
-#define QUEUE_NODE_INITIAL_CAPACITY 254
-// Header + pointer storage is 2048 bytes -> 4096 bytes -> ...
+#define QUEUE_NODE_INITIAL_CAPACITY 312
 
 typedef struct QueueNode {
     struct QueueNode* next;
@@ -15,19 +14,25 @@ typedef struct QueueNode {
     PyObject* py_objects[];
 } QueueNode_t;
 
-
-// #define QUEUE_NODE_MAX_CAPACITY \
-//     (((size_t)PY_SSIZE_T_MAX - sizeof(QueueNode_t)) / sizeof(PyObject*))
-
 typedef struct Queue {
-    PyObject_HEAD QueueNode_t* head;
+    PyObject_HEAD
+    PyObject** front; // Next free slot in the tail, possibly one past its end.
+    PyObject** back; // Next occupied slot in the head.
+    PyObject** front_end;
+    PyObject** back_end;
+    QueueNode_t* head;
     QueueNode_t* tail;
-    Py_ssize_t length;
-    Py_ssize_t front; // Next free index in the tail, including its capacity.
-    Py_ssize_t back; // Next occupied index in the head.
+    size_t span; // Full-node capacities before the tail.
     QueueNode_t* free_nodes;
-    size_t state;
+    size_t state; // Advances on each successful enqueue or dequeue.
 } Queue_t;
+
+static inline Py_ssize_t Queue_length(const Queue_t* self) {
+    if (self->front == self->back) return 0;
+    size_t front = (size_t)(self->front - self->tail->py_objects);
+    size_t back = (size_t)(self->back - self->head->py_objects);
+    return (Py_ssize_t)(self->span + front - back);
+}
 
 static inline QueueNode_t* QueueNode_new(Queue_t* self, size_t capacity) {
     QueueNode_t* node = self->free_nodes;
@@ -35,7 +40,8 @@ static inline QueueNode_t* QueueNode_new(Queue_t* self, size_t capacity) {
         // Reuse any cached capacity without searching or resizing.
         self->free_nodes = node->next;
     } else {
-        node = (QueueNode_t*)malloc(sizeof(QueueNode_t) + capacity * sizeof(PyObject*));
+        node = (QueueNode_t*)malloc(sizeof(QueueNode_t) +
+                                  (capacity + 1) * sizeof(PyObject*));
         if (node == NULL) {
             PyErr_NoMemory();
             return NULL;
@@ -43,6 +49,9 @@ static inline QueueNode_t* QueueNode_new(Queue_t* self, size_t capacity) {
         node->capacity = capacity;
     }
     node->next = NULL;
+    // Cached nodes retain stale slots; initialize both live-tail and end guards.
+    node->py_objects[0] = NULL;
+    node->py_objects[node->capacity] = NULL;
     return node;
 }
 
@@ -64,8 +73,9 @@ static PyObject* Queue_new(PyTypeObject* type, PyObject* args,
         return NULL;
     }
     self->tail = self->head;
-    self->length = 0;
-    self->front = 0;
+    self->span = self->state = 0;
+    self->front = self->back = self->head->py_objects;
+    self->front_end = self->back_end = self->front + self->head->capacity;
     return (PyObject*)self;
 }
 
@@ -77,8 +87,7 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
 
     newQueue->head = NULL;
     newQueue->tail = NULL;
-    newQueue->length = 0;
-    newQueue->back = self->back;
+    newQueue->span = newQueue->state = 0;
 
     QueueNode_t* current = self->head;
     while (current != NULL) {
@@ -88,21 +97,26 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
             return NULL;
         }
 
-        Py_ssize_t back = current == self->head ? self->back : 0;
-        Py_ssize_t end = current == self->tail ? self->front : current->capacity;
+        Py_ssize_t back = current == self->head ? self->back - current->py_objects : 0;
+        Py_ssize_t end = current == self->tail ? self->front - current->py_objects : current->capacity;
         for (Py_ssize_t index = back; index < end; ++index) {
             newNode->py_objects[index] = current->py_objects[index];
             Py_INCREF(current->py_objects[index]);
         }
 
+        // The tail may be partial; all full nodes end at their allocated guard.
+        newNode->py_objects[end] = NULL;
         if (newQueue->head == NULL) {
             newQueue->head = newNode;
+            newQueue->back = newNode->py_objects + back;
+            newQueue->back_end = newNode->py_objects + newNode->capacity;
         } else {
+            newQueue->span += (size_t)newQueue->tail->capacity;
             newQueue->tail->next = newNode;
         }
         newQueue->tail = newNode;
-        newQueue->front = end;
-        newQueue->length += end - back;
+        newQueue->front = newNode->py_objects + end;
+        newQueue->front_end = newNode->py_objects + newNode->capacity;
         current = current->next;
     }
     return (PyObject*)newQueue;
@@ -110,24 +124,28 @@ static PyObject* Queue_copy(Queue_t* self, PyObject* args) {
 
 // Transfer an owned reference into the tail node.
 static inline void QueueNode_put(Queue_t* self, PyObject* py_object) {
-    Py_ssize_t front = self->front;
-    self->tail->py_objects[front] = py_object;
+    PyObject** front = self->front;
+    *front = py_object;
     self->front = front + 1;
-    self->length++;
+    front[1] = NULL;
     self->state++;
 }
 
 static QUEUE_NOINLINE QueueNode_t* Queue_enqueue_grow(Queue_t* self) {
-    size_t capacity = self->tail->capacity * 2;
-
-    // Allocation would fail vastly earlier than this
-    // capacity = capacity > QUEUE_NODE_MAX_CAPACITY / 2
-    //     ? QUEUE_NODE_MAX_CAPACITY : capacity * 2;
+    if (self->front == self->back) {
+        // The empty tail is at its guard. Reuse it without growing capacity.
+        self->front = self->back = self->head->py_objects;
+        *self->front = NULL;
+        return self->tail;
+    }
+    size_t capacity = (size_t)self->tail->capacity * 2;
     QueueNode_t* node = QueueNode_new(self, capacity);
     if (node == NULL) return NULL;
+    self->span += (size_t)self->tail->capacity;
     self->tail->next = node;
     self->tail = node;
-    self->front = 0;
+    self->front = node->py_objects;
+    self->front_end = node->py_objects + node->capacity;
     return node;
 }
 
@@ -142,7 +160,7 @@ static QUEUE_NOINLINE PyObject* Queue_enqueue_slow(Queue_t* self, PyObject* obje
 }
 
 static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
-    if (self->front == self->tail->capacity)
+    if (self->front == self->front_end)
         return Queue_enqueue_slow(self, object);
 
     Py_INCREF(object);
@@ -150,29 +168,34 @@ static PyObject* Queue_enqueue(Queue_t* self, PyObject* object) {
     Py_RETURN_NONE;
 }
 
-// Remove a py_object from the first QueueNode in the Queue
-static PyObject* Queue_dequeue(Queue_t* self) {
-    if (self->length == 0) return Queue_dequeue_empty();
-
+static QUEUE_NOINLINE PyObject* Queue_dequeue_slow(Queue_t* self) {
     QueueNode_t* head = self->head;
-    PyObject* py_object = head->py_objects[self->back];
-    self->back++;
-    self->length--;
+    if (head == self->tail) return Queue_dequeue_empty();
+
+    // A full node's NULL guard delays retirement until the next dequeue.
+    self->span -= (size_t)head->capacity;
+    self->head = head->next;
+    PyObject** back = self->head->py_objects;
+    self->back_end = back + self->head->capacity;
+    QueueNode_recycle(self, head);
+    PyObject* object = *back;
+    self->back = back + 1;
     self->state++;
+    return object;
+}
 
-    if (self->length == 0) {
-        self->front = self->back = 0;
-    } else if (self->back == head->capacity) {
-        self->head = head->next;
-        self->back = 0;
-        QueueNode_recycle(self, head);
-    }
-
-    return py_object;
+// NULL marks the unoccupied tail and every node's allocated end guard.
+static PyObject* Queue_dequeue(Queue_t* self) {
+    PyObject** back = self->back;
+    PyObject* object = *back;
+    if (object == NULL) return Queue_dequeue_slow(self);
+    self->back = back + 1;
+    self->state++;
+    return object;
 }
 
 static int Queue_clear(Queue_t* self) {
-    while (self->length > 0) {
+    while (self->back != self->front) {
         PyObject* object = Queue_dequeue(self);
         Py_DECREF(object);
     }
@@ -206,8 +229,8 @@ static void Queue_dealloc(Queue_t* self) {
 static int Queue_traverse(Queue_t* self, visitproc visit, void* arg) {
     QueueNode_t* current = self->head;
     while (current != NULL) {
-        Py_ssize_t back = current == self->head ? self->back : 0;
-        Py_ssize_t end = current == self->tail ? self->front : current->capacity;
+        Py_ssize_t back = current == self->head ? self->back - current->py_objects : 0;
+        Py_ssize_t end = current == self->tail ? self->front - current->py_objects : current->capacity;
         for (Py_ssize_t index = back; index < end; ++index) {
             Py_VISIT(current->py_objects[index]);
         }
@@ -231,7 +254,7 @@ static PyObject* Queue_extend(Queue_t* self, PyObject* iterator) {
 
     PyObject* object;
     while ((object = next(iterable)) != NULL) {
-        if (self->front == self->tail->capacity && Queue_enqueue_grow(self) == NULL) {
+        if (self->front == self->front_end && Queue_enqueue_grow(self) == NULL) {
             Py_DECREF(object);
             Py_DECREF(iterable);
             return NULL;
@@ -263,12 +286,12 @@ static int Queue_init(Queue_t* self, PyObject* args, PyObject* kwargs) {
     return 0;
 }
 
-static Py_ssize_t Queue_len(Queue_t* self) { return self->length; }
+static Py_ssize_t Queue_len(Queue_t* self) { return Queue_length(self); }
 
 // Callers validate the logical index before walking variable-sized nodes.
 static inline QueueNode_t* Queue_locate(Queue_t* self, Py_ssize_t index, size_t* position) {
     QueueNode_t* current = self->head;
-    *position = (size_t)self->back + (size_t)index;
+    *position = (size_t)(self->back - current->py_objects) + (size_t)index;
     while (*position >= current->capacity) {
         *position -= current->capacity;
         current = current->next;
@@ -278,7 +301,7 @@ static inline QueueNode_t* Queue_locate(Queue_t* self, Py_ssize_t index, size_t*
 
 static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
     // CPython already adds the length to negative indices before calling sq_item.
-    if (index < 0 || index >= self->length) {
+    if (index < 0 || index >= Queue_length(self)) {
         PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return NULL;
     }
@@ -291,7 +314,7 @@ static PyObject* Queue_item(Queue_t* self, Py_ssize_t index) {
 }
 
 static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
-    if (index < 0 || index >= self->length) {
+    if (index < 0 || index >= Queue_length(self)) {
         PyErr_SetString(PyExc_IndexError, "Queue index out of range");
         return -1;
     }
@@ -310,7 +333,7 @@ static int Queue_setitem(Queue_t* self, Py_ssize_t index, PyObject* object) {
 }
 
 static int Queue_contains(Queue_t* self, PyObject* object) {
-    for (Py_ssize_t index = 0; index < self->length; ++index) {
+    for (Py_ssize_t index = 0; index < Queue_length(self); ++index) {
         // Comparisons/finalizers may recycle nodes; reacquire each owned item.
         PyObject* item = Queue_item(self, index);
         if (item == NULL) return -1;
@@ -397,11 +420,16 @@ static PyObject* Queue_iter(Queue_t* self) {
     QueueIter* iterator = PyObject_GC_New(QueueIter, &QueueIterType);
     if (iterator == NULL) return NULL;
     iterator->node = self->head;
-    iterator->index = self->back;
+    iterator->index = self->back - self->head->py_objects;
+    // A preceding dequeue may leave the head parked on its NULL end guard.
+    if (iterator->index == iterator->node->capacity && self->head != self->tail) {
+        iterator->node = iterator->node->next;
+        iterator->index = 0;
+    }
     Py_INCREF(self);
     iterator->queue = self;
     iterator->state = self->state;
-    iterator->remaining = self->length;
+    iterator->remaining = Queue_length(self);
     PyObject_GC_Track(iterator);
     return (PyObject*)iterator;
 }

@@ -148,7 +148,7 @@ static PyTypeObject QueueCType = {
     (inquiry)QueueC_clear,                   /* tp_clear */
     0,                                       /* tp_richcompare */
     0,                                       /* tp_weaklistoffset */
-    (getiterfunc)QueueC_iter,                 /* tp_iter */
+    (getiterfunc)QueueC_iter,                /* tp_iter */
     0,                                       /* tp_iternext */
     QueueC_methods,                          /* tp_methods */
     0,                                       /* tp_members */
