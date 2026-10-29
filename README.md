@@ -75,4 +75,12 @@ uv pip install ".[benchmark]"
 uv run python benchmark/main.py --profiles queue
 uv run python benchmark/main.py --profiles iteration
 ```
+<img width="2880" height="1600" alt="windows" src="https://github.com/user-attachments/assets/124de899-3864-4d7c-a5c9-f17037e1e02c" />
+<img width="2880" height="1600" alt="wsl" src="https://github.com/user-attachments/assets/3317e697-c57a-4a2e-89c3-d676ab5a0d2a" />
 
+
+<img width="1920" height="1120" alt="Indexed_Increment" src="https://github.com/user-attachments/assets/2dcd61ea-ef3d-422a-b037-f32fef566f23" />
+
+<img width="1920" height="1120" alt="Iterator_Local_Increment" src="https://github.com/user-attachments/assets/43a2f81d-48a3-4d33-a97f-3eb37a926088" />
+
+<img width="1920" height="1120" alt="Iterable_Instantiation" src="https://github.com/user-attachments/assets/e8437e42-7d76-449d-bff8-fb37c20a44ef" />
