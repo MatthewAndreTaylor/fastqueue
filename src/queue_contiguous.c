@@ -260,20 +260,14 @@ static int QueueC_setitem(QueueC* self, Py_ssize_t index, PyObject* object) {
 }
 
 static int QueueC_contains(QueueC* self, PyObject* object) {
-    size_t back = self->back;
-    size_t front = self->front;
-    for (size_t i = 0; i < front - back; ++i) {
-        PyObject* item = self->objects[(back + i) % self->capacity];
+    // Comparisons and finalizers may change the queue's bounds and storage.
+    for (size_t i = 0; i < self->front - self->back; ++i) {
+        PyObject* item = self->objects[(self->back + i) % self->capacity];
         // __eq__ may drop the queue's reference to item.
         Py_INCREF(item);
         int result = PyObject_RichCompareBool(item, object, Py_EQ);
         Py_DECREF(item);
-        if (result < 0) {
-            return -1;
-        }
-        if (result) {
-            return 1;
-        }
+        if (result != 0) return result;
     }
     return 0;
 }

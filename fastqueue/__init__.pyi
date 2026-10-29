@@ -6,6 +6,7 @@ fastqueue
 * QueueC
 
 """
+
 from typing import Any, Optional
 from collections.abc import Iterable, Iterator
 from typing_extensions import Self

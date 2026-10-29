@@ -52,11 +52,21 @@ def test_iteration_after_partial_drain_and_storage_reuse(queue_type):
     assert list(queue) == list(range(10123, 15000))
 
 
-@pytest.mark.parametrize("mutation", [
-    "enqueue", "dequeue", "clear", "extend", "extend_generator", "same_length",
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "enqueue",
+        "dequeue",
+        "clear",
+        "extend",
+        "extend_generator",
+        "same_length",
+    ],
+)
 @pytest.mark.parametrize("consumed", [0, 253])
-def test_structural_mutation_invalidates_native_iterator(queue_type, mutation, consumed):
+def test_structural_mutation_invalidates_native_iterator(
+    queue_type, mutation, consumed
+):
     queue = queue_type(range(1024))
     iterator = iter(queue)
     for value in range(consumed):

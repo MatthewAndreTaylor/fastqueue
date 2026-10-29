@@ -385,7 +385,7 @@ static PyObject* QueueIter_next(QueueIter* self) {
 
     PyObject* object = self->node->py_objects[self->index++];
     self->remaining--;
-    if (self->index == self->node->capacity && self->remaining > 0) {
+    if (self->index == self->node->capacity) {
         self->node = self->node->next;
         self->index = 0;
     }

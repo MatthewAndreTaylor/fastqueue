@@ -12,9 +12,7 @@ from fastqueue import *
 queue_size = 350000
 
 
-@pytest.mark.parametrize(
-    "queue", [Queue(), QueueC(), LLQueue(), ContQueue()]
-)
+@pytest.mark.parametrize("queue", [Queue(), QueueC(), LLQueue(), ContQueue()])
 def test_new(queue):
     assert not queue
     assert len(queue) == 0
@@ -37,9 +35,7 @@ def test_new(queue):
         queue.dequeue()
 
 
-@pytest.mark.parametrize(
-    "queue", [Queue(), QueueC(), LLQueue(), ContQueue()]
-)
+@pytest.mark.parametrize("queue", [Queue(), QueueC(), LLQueue(), ContQueue()])
 def test_mutation(queue):
     queue.enqueue(1)
     item = queue.dequeue()
@@ -50,20 +46,18 @@ def test_mutation(queue):
     queue.dequeue()
     assert item == 7
 
-    queue.enqueue('👑')
-    queue.enqueue('🎁')
+    queue.enqueue("👑")
+    queue.enqueue("🎁")
     item = queue.dequeue()
-    assert item == '👑'
-    item = '🧶'
+    assert item == "👑"
+    item = "🧶"
     queue.enqueue(item)
-    assert item == '🧶'
+    assert item == "🧶"
     item = queue.dequeue()
-    assert item == '🎁'
+    assert item == "🎁"
 
 
-@pytest.mark.parametrize(
-    "queue", [Queue(), QueueC(), LLQueue(), ContQueue()]
-)
+@pytest.mark.parametrize("queue", [Queue(), QueueC(), LLQueue(), ContQueue()])
 def test_large(queue):
     for i in range(queue_size):
         queue.enqueue(i)
@@ -158,8 +152,7 @@ def test_extend(queue):
     queue.extend([1, 2, 3])
     assert queue
     assert len(queue) == queue_size + 3
-    assert [queue.dequeue() for _ in range(queue_size)] == list(
-        range(queue_size))
+    assert [queue.dequeue() for _ in range(queue_size)] == list(range(queue_size))
     assert len(queue) == 3
     assert [queue.dequeue() for _ in range(len(queue))] == [1, 2, 3]
     assert not queue
@@ -333,7 +326,8 @@ def test_contiguous_extend_keeps_progress_after_iterator_error(removed):
     [
         (sys.maxsize, MemoryError),
         (sys.maxsize // struct.calcsize("P") - 514, MemoryError),
-        (-1, ValueError), (sys.maxsize + 1, OverflowError),
+        (-1, ValueError),
+        (sys.maxsize + 1, OverflowError),
     ],
 )
 def test_contiguous_extend_invalid_length_hint_preserves_queue(hint, error):
@@ -653,9 +647,9 @@ def test_containsQueue(queue):
     queue.dequeue()
     assert not (0 in queue)
 
-    assert not ('🐲' in queue)
-    queue.enqueue('🐲')
-    assert '🐲' in queue
+    assert not ("🐲" in queue)
+    queue.enqueue("🐲")
+    assert "🐲" in queue
 
 
 @pytest.mark.parametrize("queue", [Queue, QueueC])
@@ -707,7 +701,7 @@ class MembershipPayload:
     pass
 
 
-@pytest.mark.parametrize('queue_type', [Queue, QueueC])
+@pytest.mark.parametrize("queue_type", [Queue, QueueC])
 def test_contains_allows_item_replacement_without_cursor_mutation(queue_type):
     queue = queue_type([MembershipPayload(), MembershipPayload()])
     seen = []

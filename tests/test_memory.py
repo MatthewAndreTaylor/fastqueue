@@ -17,7 +17,6 @@ import pytest
 from fastqueue import Queue, QueueC
 from fastqueue.prototypes import ContQueue, LLQueue
 
-
 QUEUE_TYPES = [Queue, QueueC, LLQueue, ContQueue]
 PUBLIC_QUEUE_TYPES = [Queue, QueueC]
 ITERATIONS = 20_000
@@ -531,8 +530,12 @@ CHECKS = {
 def _run_in_subprocess(queue_type, scenario):
     result = subprocess.run(
         [
-            sys.executable, "-X", "faulthandler", str(Path(__file__).resolve()),
-            queue_type.__name__, scenario,
+            sys.executable,
+            "-X",
+            "faulthandler",
+            str(Path(__file__).resolve()),
+            queue_type.__name__,
+            scenario,
         ],
         capture_output=True,
         text=True,
@@ -553,9 +556,7 @@ def test_no_memory_growth(queue_type, workload):
     _run_in_subprocess(queue_type, workload)
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 @pytest.mark.parametrize("workload", ["copy_populated", "extend_nonempty"])
 def test_sequence_operations_no_memory_growth(queue_type, workload):
     _run_in_subprocess(queue_type, workload)
@@ -567,9 +568,7 @@ def test_deleting_queue_releases_payload(queue_type, scenario):
     _run_in_subprocess(queue_type, scenario)
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 @pytest.mark.parametrize(
     "scenario",
     ["copy_ownership", "extend_iterators", "indexing_ownership"],
@@ -583,21 +582,19 @@ def test_clear_after_partial_drain_releases_payloads(queue_type):
     _run_in_subprocess(queue_type, "clear_after_partial_drain")
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 def test_extend_hints_release_payloads(queue_type):
     _run_in_subprocess(queue_type, "extend_hints_release_payloads")
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 def test_native_clear_allows_reentry(queue_type):
     _run_in_subprocess(queue_type, "native_clear_reentry")
 
 
-@pytest.mark.parametrize("queue_type", [LLQueue, ContQueue], ids=lambda cls: cls.__name__)
+@pytest.mark.parametrize(
+    "queue_type", [LLQueue, ContQueue], ids=lambda cls: cls.__name__
+)
 @pytest.mark.parametrize(
     "scenario", ["prototype_clear", "reentrant_clear", "clear_finalizer_refill"]
 )
@@ -605,30 +602,22 @@ def test_clear_releases_payloads(queue_type, scenario):
     _run_in_subprocess(queue_type, scenario)
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 def test_replacing_payload_allows_reentry(queue_type):
     _run_in_subprocess(queue_type, "reentrant_setitem")
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 def test_deeply_nested_queues_are_released(queue_type):
     _run_in_subprocess(queue_type, "deeply_nested")
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 def test_reference_cycles_are_collected(queue_type):
     _run_in_subprocess(queue_type, "collect_cycle")
 
 
-@pytest.mark.parametrize(
-    "queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__
-)
+@pytest.mark.parametrize("queue_type", PUBLIC_QUEUE_TYPES, ids=lambda cls: cls.__name__)
 @pytest.mark.parametrize("scenario", ["repeated_drain", "cycle_after_drain"])
 def test_reused_queue_releases_payloads(queue_type, scenario):
     _run_in_subprocess(queue_type, scenario)

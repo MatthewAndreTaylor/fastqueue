@@ -1,10 +1,9 @@
 import random
 import time
-import sys
-from pandas import DataFrame
-import matplotlib.pyplot as plt
 from collections import deque
 from fastqueue import *
+
+DEFAULT_SIZES = range(500, 401000, 20000)
 
 
 class QueueOperationProfile:
@@ -14,15 +13,6 @@ class QueueOperationProfile:
         self.size = size
         self.execution_times = []
         self.constructor_params = constructor_params
-
-    def as_tuple(self) -> tuple:
-        return (
-            self.size,
-            self.structure.__module__,
-            self.structure.__name__,
-            self.op.__name__,
-            self.execution_times,
-        )
 
     def run(self) -> None:
         pass
@@ -67,7 +57,7 @@ class MixedProfile(SingleArgProfile):
         self.execution_times.append(end - start)
 
 
-class IterationProfile(QueueOperationProfile):
+class IteratorTraversalProfile(QueueOperationProfile):
     def run(self) -> None:
         test_instance = self.structure(self.constructor_params)
         start = time.perf_counter_ns()
@@ -83,17 +73,6 @@ def run_profiles(profiles: QueueOperationProfile, trials: int) -> None:
         random.shuffle(profiles)
         for profile in profiles:
             profile.run()
-
-
-def to_dataframe(profiles: QueueOperationProfile):
-    frame = DataFrame.from_records(
-        data=map(lambda profile: profile.as_tuple(), profiles),
-        columns=["size", "module", "queue_type", "queue_op", "time"],
-    )
-    frame = frame.explode("time")
-    frame["time"] = frame["time"].astype(float)
-    frame["time"] /= 10**3
-    return frame
 
 
 def getter_profiles(it):
@@ -137,12 +116,12 @@ def extend_profiles(it):
     return res
 
 
-def iteration_profiles(it):
+def iterator_profiles(it):
     res = []
     for i in it:
         items = [random.randint(0, 1000) for _ in range(i)]
         for structure in (deque, Queue, QueueC):
-            res.append(IterationProfile(structure, iter, i, items))
+            res.append(IteratorTraversalProfile(structure, iter, i, items))
     return res
 
 
@@ -152,37 +131,11 @@ def mixed_profiles(it):
         initial = [random.randint(0, 1000) for _ in range(i)]
         items = [random.randint(0, 1000) for _ in range(i)]
         # appendleft/pop needs reversed storage to remove the same FIFO inputs.
-        res.append(MixedProfile(deque, deque.appendleft, deque.pop, items, i, initial[::-1]))
+        res.append(
+            MixedProfile(deque, deque.appendleft, deque.pop, items, i, initial[::-1])
+        )
         res.append(MixedProfile(Queue, Queue.enqueue, Queue.dequeue, items, i, initial))
-        res.append(MixedProfile(QueueC, QueueC.enqueue, QueueC.dequeue, items, i, initial))
+        res.append(
+            MixedProfile(QueueC, QueueC.enqueue, QueueC.dequeue, items, i, initial)
+        )
     return res
-
-
-def execute_profiles(seed, profiles, num_trials):
-    random.seed(seed)
-    run_profiles(profiles, num_trials)
-    df = to_dataframe(profiles)
-
-    fig, ax = plt.subplots()
-    plt.title(f"Queue Performance : {sys.platform}")
-    ax.set_xlabel("Number of operations")
-    ax.set_ylabel("Time (microseconds)")
-
-    grouped = df.groupby(["queue_type", "queue_op"])
-    for name, group in grouped:
-        means = group.groupby("size")["time"].mean()
-        ax.plot(means, label=".".join(name))
-    ax.legend()
-    plt.show()
-
-
-if __name__ == "__main__":
-    it = range(500, 50000, 500)
-    execute_profiles(
-        1,
-        dequeue_profiles(it)
-        + enqueue_profiles(it)
-        + extend_profiles(it)
-        + getter_profiles(it),
-        50,
-    )

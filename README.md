@@ -8,16 +8,12 @@
 
 Single-ended fast queues built in C tuned for Python.
 
-## Requirements
-
-- `python 3.7+`
-
 ## Installation
 
-To install fastqueue, using [pip](https://pypi.org/project/fastqueue-lib): 
+Install with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install fastqueue-lib
+uv pip install fastqueue-lib
 ```
 
 ## Quickstart
@@ -68,6 +64,15 @@ True
 ['🚒', '🛴', '🚅', '🚗']
 ```
 
-## Example Benchmarks
+## Benchmarks
 
-...
+Run every benchmark and save all five figures as PNG and SVG, along with the
+measurements and build metadata in JSON:
+
+```bash
+uv pip install ".[benchmark]"
+
+uv run python benchmark/main.py --profiles queue
+uv run python benchmark/main.py --profiles iteration
+```
+
