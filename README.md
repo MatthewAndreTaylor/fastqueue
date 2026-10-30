@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/fastqueue-lib.svg)](https://pypi.org/project/fastqueue-lib/)
 
 
-Single-ended Fast Queue Python C-extension.
+Fast Single-ended Queues for Python.
 
 ## Installation
 
